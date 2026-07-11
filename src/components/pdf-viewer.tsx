@@ -4,15 +4,63 @@ import { useEffect, useMemo, useState } from "react";
 import { Document, Page, Thumbnail, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ZoomIn,
+  ZoomOut,
+  Search,
+  PanelLeft,
+  Maximize,
+  Minimize,
+} from "lucide-react";
+import { Tooltip } from "@/components/ui/tooltip";
+import { Skeleton } from "@/components/ui/skeleton";
 
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
-export function PdfViewer({ documentId, pageCount }: { documentId: string; pageCount: number | null }) {
+function IconButton({
+  onClick,
+  disabled,
+  label,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip label={label}>
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={label}
+        className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-black/5 disabled:opacity-30 dark:hover:bg-white/10"
+      >
+        {children}
+      </button>
+    </Tooltip>
+  );
+}
+
+export function PdfViewer({
+  documentId,
+  pageCount,
+  fullscreen = false,
+  onToggleFullscreen,
+}: {
+  documentId: string;
+  pageCount: number | null;
+  fullscreen?: boolean;
+  onToggleFullscreen?: () => void;
+}) {
   const [numPages, setNumPages] = useState<number>(pageCount ?? 0);
   const [currentPage, setCurrentPage] = useState(1);
   const [scale, setScale] = useState(1.1);
   const [searchText, setSearchText] = useState("");
   const [showThumbnails, setShowThumbnails] = useState(true);
+  const [loaded, setLoaded] = useState(false);
 
   const fileUrl = useMemo(() => `/api/documents/${documentId}/file`, [documentId]);
 
@@ -28,57 +76,65 @@ export function PdfViewer({ documentId, pageCount }: { documentId: string; pageC
 
   return (
     <div className="flex h-full flex-col">
-      <div className="glass flex flex-wrap items-center gap-3 rounded-2xl px-4 py-2 mb-3">
-        <div className="flex items-center gap-1">
-          <button
+      <div className="glass mb-3 flex flex-wrap items-center gap-2 rounded-2xl px-3 py-2">
+        <div className="flex items-center gap-0.5">
+          <IconButton
             onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
             disabled={currentPage <= 1}
-            className="rounded-lg px-2 py-1 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30"
+            label="Previous page"
           >
-            ◀
-          </button>
-          <span className="text-sm tabular-nums">
-            Page {currentPage} / {numPages || "…"}
+            <ChevronLeft size={16} />
+          </IconButton>
+          <span className="min-w-[5.5rem] text-center text-sm tabular-nums">
+            {currentPage} / {numPages || "…"}
           </span>
-          <button
+          <IconButton
             onClick={() => setCurrentPage((p) => Math.min(numPages || p, p + 1))}
             disabled={currentPage >= numPages}
-            className="rounded-lg px-2 py-1 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30"
+            label="Next page"
           >
-            ▶
-          </button>
+            <ChevronRight size={16} />
+          </IconButton>
         </div>
 
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setScale((s) => Math.max(0.5, s - 0.1))}
-            className="rounded-lg px-2 py-1 hover:bg-black/5 dark:hover:bg-white/10"
-          >
-            −
-          </button>
-          <span className="text-sm tabular-nums w-12 text-center">{Math.round(scale * 100)}%</span>
-          <button
-            onClick={() => setScale((s) => Math.min(3, s + 0.1))}
-            className="rounded-lg px-2 py-1 hover:bg-black/5 dark:hover:bg-white/10"
-          >
-            +
-          </button>
+        <div className="mx-1 h-5 w-px bg-black/10 dark:bg-white/10" />
+
+        <div className="flex items-center gap-0.5">
+          <IconButton onClick={() => setScale((s) => Math.max(0.5, s - 0.1))} label="Zoom out">
+            <ZoomOut size={16} />
+          </IconButton>
+          <span className="w-11 text-center text-sm tabular-nums">{Math.round(scale * 100)}%</span>
+          <IconButton onClick={() => setScale((s) => Math.min(3, s + 0.1))} label="Zoom in">
+            <ZoomIn size={16} />
+          </IconButton>
         </div>
 
-        <input
-          type="text"
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          placeholder="Search in page…"
-          className="min-w-0 flex-1 rounded-lg border border-black/10 dark:border-white/10 bg-transparent px-3 py-1 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-        />
+        <div className="relative min-w-0 flex-1">
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 opacity-40" />
+          <input
+            type="text"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="Search in page…"
+            className="w-full rounded-lg border border-black/10 bg-transparent py-1.5 pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-accent dark:border-white/10"
+          />
+        </div>
 
-        <button
+        <IconButton
           onClick={() => setShowThumbnails((v) => !v)}
-          className="rounded-lg px-2 py-1 text-sm hover:bg-black/5 dark:hover:bg-white/10"
+          label={showThumbnails ? "Hide thumbnails" : "Show thumbnails"}
         >
-          {showThumbnails ? "Hide thumbnails" : "Show thumbnails"}
-        </button>
+          <PanelLeft size={16} />
+        </IconButton>
+
+        {onToggleFullscreen && (
+          <IconButton
+            onClick={onToggleFullscreen}
+            label={fullscreen ? "Exit full screen" : "Full screen"}
+          >
+            {fullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
+          </IconButton>
+        )}
       </div>
 
       <div className="flex flex-1 gap-3 overflow-hidden">
@@ -90,7 +146,7 @@ export function PdfViewer({ documentId, pageCount }: { documentId: string; pageC
                   key={n}
                   onClick={() => setCurrentPage(n)}
                   className={`mb-2 block w-full rounded-lg border-2 transition ${
-                    n === currentPage ? "border-indigo-500" : "border-transparent"
+                    n === currentPage ? "border-accent" : "border-transparent"
                   }`}
                 >
                   <Thumbnail pageNumber={n} width={90} />
@@ -100,21 +156,32 @@ export function PdfViewer({ documentId, pageCount }: { documentId: string; pageC
           </div>
         )}
 
-        <div className="flex-1 overflow-auto rounded-2xl glass p-4">
-          <Document
-            file={fileUrl}
-            onLoadSuccess={({ numPages: n }) => setNumPages(n)}
-            loading={<p className="p-8 text-center text-sm opacity-60">Loading PDF…</p>}
-            error={<p className="p-8 text-center text-sm text-red-500">Failed to load PDF.</p>}
-          >
-            <Page
-              pageNumber={currentPage}
-              scale={scale}
-              customTextRenderer={searchText ? ({ str }) => highlightPattern(str) : undefined}
-              renderAnnotationLayer
-              renderTextLayer
-            />
-          </Document>
+        <div className="glass flex-1 overflow-auto rounded-2xl p-4">
+          {!loaded && (
+            <div className="flex flex-col items-center gap-3 p-8">
+              <Skeleton className="h-[70vh] w-full max-w-md" />
+            </div>
+          )}
+          <div className={loaded ? "animate-fade-in" : "hidden"}>
+            <Document
+              file={fileUrl}
+              onLoadSuccess={({ numPages: n }) => {
+                setNumPages(n);
+                setLoaded(true);
+              }}
+              error={<p className="p-8 text-center text-sm text-red-500">Failed to load PDF.</p>}
+            >
+              <Page
+                key={currentPage}
+                pageNumber={currentPage}
+                scale={scale}
+                className="animate-fade-in"
+                customTextRenderer={searchText ? ({ str }) => highlightPattern(str) : undefined}
+                renderAnnotationLayer
+                renderTextLayer
+              />
+            </Document>
+          </div>
         </div>
       </div>
     </div>

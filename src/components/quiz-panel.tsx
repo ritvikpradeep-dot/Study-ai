@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ProgressBar } from "@/components/ui/progress-bar";
 
 type QuizQuestion = {
   id: string;
@@ -55,10 +56,9 @@ export function QuizPanel({ documentId }: { documentId: string }) {
 
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [index, setIndex] = useState(0);
-  const [answers, setAnswers] = useState<AnswerRecord[]>([]);
+  const [answers, setAnswers] = useState<Record<string, AnswerRecord>>({});
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [shortAnswerInput, setShortAnswerInput] = useState("");
-  const [feedback, setFeedback] = useState<{ correct: boolean; text: string } | null>(null);
   const [grading, setGrading] = useState(false);
   const [finalScore, setFinalScore] = useState<{ score: number; total: number } | null>(null);
 
@@ -76,6 +76,11 @@ export function QuizPanel({ documentId }: { documentId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId]);
 
+  useEffect(() => {
+    setSelectedOption(null);
+    setShortAnswerInput("");
+  }, [index]);
+
   const toggleType = (t: string) => {
     setTypes((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
   };
@@ -83,10 +88,9 @@ export function QuizPanel({ documentId }: { documentId: string }) {
   const startQuiz = (q: Quiz) => {
     setQuiz(q);
     setIndex(0);
-    setAnswers([]);
+    setAnswers({});
     setSelectedOption(null);
     setShortAnswerInput("");
-    setFeedback(null);
     setFinalScore(null);
     setMode("taking");
   };
@@ -138,15 +142,26 @@ export function QuizPanel({ documentId }: { documentId: string }) {
   const currentOptions: string[] = currentQuestion?.options
     ? JSON.parse(currentQuestion.options)
     : [];
+  const currentAnswer = currentQuestion ? answers[currentQuestion.id] : undefined;
+  const feedback = currentAnswer
+    ? {
+        correct: currentAnswer.isCorrect,
+        text:
+          currentQuestion?.type === "mcq"
+            ? currentQuestion.explanation
+            : currentAnswer.feedback ?? "",
+      }
+    : null;
+
+  const answeredCount = useMemo(() => Object.keys(answers).length, [answers]);
 
   const submitMcq = () => {
     if (!currentQuestion || selectedOption == null) return;
     const isCorrect = selectedOption === currentQuestion.correctAnswer;
-    setAnswers((prev) => [
+    setAnswers((prev) => ({
       ...prev,
-      { questionId: currentQuestion.id, userAnswer: selectedOption, isCorrect },
-    ]);
-    setFeedback({ correct: isCorrect, text: currentQuestion.explanation });
+      [currentQuestion.id]: { questionId: currentQuestion.id, userAnswer: selectedOption, isCorrect },
+    }));
   };
 
   const submitShortAnswer = async () => {
@@ -163,44 +178,44 @@ export function QuizPanel({ documentId }: { documentId: string }) {
       setError(data.error || "Failed to grade answer.");
       return;
     }
-    setAnswers((prev) => [
+    setAnswers((prev) => ({
       ...prev,
-      {
+      [currentQuestion.id]: {
         questionId: currentQuestion.id,
         userAnswer: shortAnswerInput,
         isCorrect: data.correct,
         feedback: data.feedback,
       },
-    ]);
-    setFeedback({ correct: data.correct, text: data.feedback });
+    }));
   };
 
-  const nextQuestion = async () => {
+  const finishQuiz = async () => {
     if (!quiz) return;
-    if (index + 1 < quiz.questions.length) {
-      setIndex((i) => i + 1);
-      setSelectedOption(null);
-      setShortAnswerInput("");
-      setFeedback(null);
-      return;
-    }
-
     const res = await fetch(`/api/quizzes/${quiz.id}/attempts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ answers }),
+      body: JSON.stringify({ answers: Object.values(answers) }),
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       setFinalScore({ score: data.attempt.score, total: data.attempt.total });
     } else {
       setFinalScore({
-        score: answers.filter((a) => a.isCorrect).length,
+        score: Object.values(answers).filter((a) => a.isCorrect).length,
         total: quiz.questions.length,
       });
     }
     setMode("review");
     loadHistory();
+  };
+
+  const goToNext = () => {
+    if (!quiz) return;
+    if (index + 1 < quiz.questions.length) {
+      setIndex((i) => i + 1);
+    } else {
+      finishQuiz();
+    }
   };
 
   if (mode === "taking" && quiz && currentQuestion) {
@@ -215,19 +230,48 @@ export function QuizPanel({ documentId }: { documentId: string }) {
           </button>
         </div>
 
+        <ProgressBar value={answeredCount} max={quiz.questions.length} />
+
+        <div className="flex flex-wrap gap-1.5">
+          {quiz.questions.map((q, i) => {
+            const a = answers[q.id];
+            const isCurrent = i === index;
+            return (
+              <button
+                key={q.id}
+                onClick={() => setIndex(i)}
+                aria-label={`Go to question ${i + 1}`}
+                className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium transition ${
+                  isCurrent
+                    ? "ring-2 ring-accent ring-offset-2 ring-offset-[var(--background)]"
+                    : ""
+                } ${
+                  a
+                    ? a.isCorrect
+                      ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"
+                      : "bg-red-500/20 text-red-600 dark:text-red-400"
+                    : "bg-black/5 opacity-60 dark:bg-white/10"
+                }`}
+              >
+                {i + 1}
+              </button>
+            );
+          })}
+        </div>
+
         <div className="glass rounded-2xl p-4">
           <p className="font-medium">{currentQuestion.prompt}</p>
 
           {currentQuestion.type === "mcq" ? (
             <div className="mt-3 flex flex-col gap-2">
               {currentOptions.map((opt) => {
-                const isSelected = selectedOption === opt;
-                const showCorrectness = feedback != null;
+                const isSelected = currentAnswer ? currentAnswer.userAnswer === opt : selectedOption === opt;
+                const showCorrectness = currentAnswer != null;
                 const isRight = opt === currentQuestion.correctAnswer;
                 return (
                   <button
                     key={opt}
-                    disabled={feedback != null}
+                    disabled={currentAnswer != null}
                     onClick={() => setSelectedOption(opt)}
                     className={`rounded-xl border px-4 py-2 text-left text-sm transition ${
                       showCorrectness && isRight
@@ -235,7 +279,7 @@ export function QuizPanel({ documentId }: { documentId: string }) {
                         : showCorrectness && isSelected && !isRight
                           ? "border-red-500 bg-red-500/10"
                           : isSelected
-                            ? "border-indigo-500 bg-indigo-500/10"
+                            ? "border-accent bg-accent/10"
                             : "border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
                     }`}
                   >
@@ -246,12 +290,12 @@ export function QuizPanel({ documentId }: { documentId: string }) {
             </div>
           ) : (
             <textarea
-              disabled={feedback != null}
-              value={shortAnswerInput}
+              disabled={currentAnswer != null}
+              value={currentAnswer ? currentAnswer.userAnswer : shortAnswerInput}
               onChange={(e) => setShortAnswerInput(e.target.value)}
               placeholder="Type your answer…"
               rows={3}
-              className="mt-3 w-full rounded-xl border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+              className="mt-3 w-full rounded-xl border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent disabled:opacity-80"
             />
           )}
         </div>
@@ -272,12 +316,12 @@ export function QuizPanel({ documentId }: { documentId: string }) {
         {error && <p className="text-sm text-red-500">{error}</p>}
 
         <div className="mt-auto flex justify-end gap-2">
-          {feedback == null ? (
+          {currentAnswer == null ? (
             currentQuestion.type === "mcq" ? (
               <button
                 onClick={submitMcq}
                 disabled={selectedOption == null}
-                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:opacity-50"
+                className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-50"
               >
                 Submit
               </button>
@@ -285,15 +329,15 @@ export function QuizPanel({ documentId }: { documentId: string }) {
               <button
                 onClick={submitShortAnswer}
                 disabled={grading || !shortAnswerInput.trim()}
-                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:opacity-50"
+                className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-50"
               >
                 {grading ? "Grading…" : "Submit"}
               </button>
             )
           ) : (
             <button
-              onClick={nextQuestion}
-              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500"
+              onClick={goToNext}
+              className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
             >
               {index + 1 < quiz.questions.length ? "Next" : "Finish"}
             </button>
@@ -314,8 +358,8 @@ export function QuizPanel({ documentId }: { documentId: string }) {
         </div>
 
         <div className="flex flex-col gap-2">
-          {quiz.questions.map((q, i) => {
-            const a = answers[i];
+          {quiz.questions.map((q) => {
+            const a = answers[q.id];
             return (
               <div key={q.id} className="glass rounded-xl p-3 text-sm">
                 <p className="font-medium">{q.prompt}</p>
@@ -342,7 +386,7 @@ export function QuizPanel({ documentId }: { documentId: string }) {
           </button>
           <button
             onClick={() => setMode("setup")}
-            className="flex-1 rounded-xl bg-indigo-600 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+            className="flex-1 rounded-xl bg-accent py-2 text-sm font-medium text-accent-foreground hover:opacity-90"
           >
             New quiz
           </button>
@@ -364,7 +408,7 @@ export function QuizPanel({ documentId }: { documentId: string }) {
               onClick={() => setSource(s)}
               className={`rounded-full px-3 py-1 text-xs transition ${
                 source === s
-                  ? "bg-indigo-600 text-white"
+                  ? "bg-accent text-accent-foreground"
                   : "bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20"
               }`}
             >
@@ -384,7 +428,7 @@ export function QuizPanel({ documentId }: { documentId: string }) {
             onChange={(e) => setCustomQuestionsText(e.target.value)}
             rows={6}
             placeholder="Paste the questions here — we'll match answers using this document."
-            className="w-full rounded-xl border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full rounded-xl border border-black/10 dark:border-white/10 bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
       ) : (
@@ -400,7 +444,7 @@ export function QuizPanel({ documentId }: { documentId: string }) {
                   onClick={() => setQuestionCount(n)}
                   className={`rounded-full px-3 py-1 text-xs transition ${
                     questionCount === n
-                      ? "bg-indigo-600 text-white"
+                      ? "bg-accent text-accent-foreground"
                       : "bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20"
                   }`}
                 >
@@ -429,7 +473,7 @@ export function QuizPanel({ documentId }: { documentId: string }) {
                   onClick={() => setDifficulty(d)}
                   className={`rounded-full px-3 py-1 text-xs capitalize transition ${
                     difficulty === d
-                      ? "bg-indigo-600 text-white"
+                      ? "bg-accent text-accent-foreground"
                       : "bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20"
                   }`}
                 >
@@ -455,7 +499,7 @@ export function QuizPanel({ documentId }: { documentId: string }) {
               onClick={() => toggleType(t.value)}
               className={`rounded-full px-3 py-1 text-xs transition ${
                 types.includes(t.value)
-                  ? "bg-indigo-600 text-white"
+                  ? "bg-accent text-accent-foreground"
                   : "bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20"
               }`}
             >
@@ -468,7 +512,7 @@ export function QuizPanel({ documentId }: { documentId: string }) {
       <button
         onClick={generate}
         disabled={generating}
-        className="rounded-xl bg-indigo-600 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:opacity-60"
+        className="rounded-xl bg-accent py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
       >
         {generating ? "Generating…" : "Generate quiz"}
       </button>

@@ -54,7 +54,7 @@ function LoginForm() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="rounded-xl border border-black/10 dark:border-white/10 bg-transparent px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+            className="rounded-xl border border-black/10 dark:border-white/10 bg-transparent px-4 py-2.5 outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
         <div className="flex flex-col gap-1">
@@ -65,7 +65,7 @@ function LoginForm() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="rounded-xl border border-black/10 dark:border-white/10 bg-transparent px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+            className="rounded-xl border border-black/10 dark:border-white/10 bg-transparent px-4 py-2.5 outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
@@ -78,7 +78,7 @@ function LoginForm() {
             />
             Remember me
           </label>
-          <Link href="/forgot-password" className="text-indigo-500 hover:underline">
+          <Link href="/forgot-password" className="text-accent hover:underline">
             Forgot password?
           </Link>
         </div>
@@ -88,7 +88,7 @@ function LoginForm() {
         <button
           type="submit"
           disabled={loading}
-          className="mt-2 rounded-xl bg-indigo-600 py-2.5 font-medium text-white transition hover:bg-indigo-500 disabled:opacity-60"
+          className="mt-2 rounded-xl bg-accent py-2.5 font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
         >
           {loading ? "Logging in…" : "Log in"}
         </button>
@@ -111,7 +111,7 @@ function LoginForm() {
 
       <p className="text-center text-sm opacity-70">
         Don&apos;t have an account?{" "}
-        <Link href="/signup" className="text-indigo-500 hover:underline">
+        <Link href="/signup" className="text-accent hover:underline">
           Sign up
         </Link>
       </p>

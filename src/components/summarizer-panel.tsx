@@ -86,7 +86,7 @@ export function SummarizerPanel({ documentId }: { documentId: string }) {
               onClick={() => setLength(opt.value)}
               className={`rounded-full px-3 py-1 text-xs transition ${
                 length === opt.value
-                  ? "bg-indigo-600 text-white"
+                  ? "bg-accent text-accent-foreground"
                   : "bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20"
               }`}
             >
@@ -118,7 +118,7 @@ export function SummarizerPanel({ documentId }: { documentId: string }) {
               onClick={() => setStyle(opt.value)}
               className={`rounded-full px-3 py-1 text-xs transition ${
                 style === opt.value
-                  ? "bg-indigo-600 text-white"
+                  ? "bg-accent text-accent-foreground"
                   : "bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20"
               }`}
             >
@@ -137,7 +137,7 @@ export function SummarizerPanel({ documentId }: { documentId: string }) {
               onClick={() => toggleOption(opt.value)}
               className={`rounded-full px-3 py-1 text-xs transition ${
                 options.includes(opt.value)
-                  ? "bg-indigo-600 text-white"
+                  ? "bg-accent text-accent-foreground"
                   : "bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20"
               }`}
             >
@@ -150,7 +150,7 @@ export function SummarizerPanel({ documentId }: { documentId: string }) {
       <button
         onClick={generate}
         disabled={loading}
-        className="rounded-xl bg-indigo-600 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:opacity-60"
+        className="rounded-xl bg-accent py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
       >
         {loading ? "Generating…" : "Generate summary"}
       </button>

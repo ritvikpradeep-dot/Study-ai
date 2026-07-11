@@ -50,13 +50,24 @@ export async function POST(
 
   const body = await request.json().catch(() => ({}));
   const question = typeof body.message === "string" ? body.message.trim() : "";
-  if (!question) {
-    return new Response("Message is required.", { status: 400 });
-  }
+  const regenerate = body.regenerate === true;
 
-  await prisma.chatMessage.create({
-    data: { documentId: id, role: "user", content: question },
-  });
+  if (regenerate) {
+    const lastMessage = await prisma.chatMessage.findFirst({
+      where: { documentId: id },
+      orderBy: { createdAt: "desc" },
+    });
+    if (lastMessage?.role === "assistant") {
+      await prisma.chatMessage.delete({ where: { id: lastMessage.id } });
+    }
+  } else {
+    if (!question) {
+      return new Response("Message is required.", { status: 400 });
+    }
+    await prisma.chatMessage.create({
+      data: { documentId: id, role: "user", content: question },
+    });
+  }
 
   const history = await prisma.chatMessage.findMany({
     where: { documentId: id },
@@ -84,13 +95,16 @@ export async function POST(
         });
 
         for await (const chunk of chunks) {
+          if (request.signal.aborted) break;
           fullResponse += chunk;
           controller.enqueue(encoder.encode(chunk));
         }
 
-        await prisma.chatMessage.create({
-          data: { documentId: id, role: "assistant", content: fullResponse },
-        });
+        if (fullResponse) {
+          await prisma.chatMessage.create({
+            data: { documentId: id, role: "assistant", content: fullResponse },
+          });
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : "unknown error";
         controller.enqueue(encoder.encode(`\n\n[Error: ${message}]`));

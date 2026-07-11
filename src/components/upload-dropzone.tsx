@@ -66,7 +66,7 @@ export function UploadDropzone({ onUploaded }: { onUploaded?: () => void }) {
         {...getRootProps()}
         className={`glass flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-6 py-10 text-center transition ${
           isDragActive
-            ? "border-indigo-500 bg-indigo-500/5"
+            ? "border-accent bg-accent/5"
             : "border-black/15 dark:border-white/15"
         } ${uploading ? "cursor-not-allowed opacity-70" : ""}`}
       >
