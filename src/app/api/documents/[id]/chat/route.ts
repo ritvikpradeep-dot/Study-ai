@@ -34,7 +34,7 @@ export async function POST(
   }
   if (!isAiConfigured()) {
     return new Response(
-      "AI features aren't configured yet. Add OPENROUTER_API_KEY to .env.local and restart the server.",
+      "AI features aren't configured yet. Add GROQ_API_KEY to .env.local and restart the server.",
       { status: 503 }
     );
   }
