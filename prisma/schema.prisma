@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  createdAt     DateTime  @default(now())
+
+  accounts  Account[]
+  sessions  Session[]
+  documents Document[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+enum DocumentStatus {
+  processing
+  ready
+  error
+}
+
+model Document {
+  id           String         @id @default(cuid())
+  userId       String
+  title        String
+  filename     String
+  storagePath  String
+  fileSize     Int
+  pageCount    Int?
+  textContent  String?
+  status       DocumentStatus @default(processing)
+  errorMessage String?
+  createdAt    DateTime       @default(now())
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+  quizzes  Quiz[]
+}
+
+enum ChatRole {
+  user
+  assistant
+}
+
+model ChatMessage {
+  id         String   @id @default(cuid())
+  documentId String
+  role       ChatRole
+  content    String
+  createdAt  DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+}
+
+enum QuizSource {
+  document
+  summary
+  custom
+}
+
+enum QuestionType {
+  mcq
+  short_answer
+}
+
+model Quiz {
+  id         String     @id @default(cuid())
+  documentId String
+  title      String
+  source     QuizSource
+  difficulty String?
+  createdAt  DateTime   @default(now())
+
+  document  Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+}
+
+model QuizQuestion {
+  id             String       @id @default(cuid())
+  quizId         String
+  type           QuestionType
+  orderIndex     Int
+  prompt         String
+  options        String? // JSON-encoded string[] for mcq
+  correctAnswer  String
+  explanation    String
+
+  quiz    Quiz          @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  answers QuizAnswer[]
+}
+
+model QuizAttempt {
+  id        String   @id @default(cuid())
+  quizId    String
+  userId    String
+  score     Int
+  total     Int
+  createdAt DateTime @default(now())
+
+  quiz    Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  answers QuizAnswer[]
+}
+
+model QuizAnswer {
+  id         String  @id @default(cuid())
+  attemptId  String
+  questionId String
+  userAnswer String
+  isCorrect  Boolean
+  feedback   String?
+
+  attempt  QuizAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
