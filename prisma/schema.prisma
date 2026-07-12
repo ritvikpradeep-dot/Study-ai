@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -68,7 +68,7 @@ model Document {
   userId       String
   title        String
   filename     String
-  storagePath  String
+  storageUrl   String
   fileSize     Int
   pageCount    Int?
   textContent  String?

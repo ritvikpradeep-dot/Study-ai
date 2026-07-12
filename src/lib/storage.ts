@@ -1,18 +1,24 @@
-import path from "node:path";
-import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { put, del } from "@vercel/blob";
 
-const STORAGE_ROOT = path.join(process.cwd(), "storage", "uploads");
-
-export function documentStoragePath(userId: string, documentId: string, filename: string) {
-  return path.join(userId, documentId, filename);
+export function documentBlobPath(userId: string, documentId: string, filename: string) {
+  return `${userId}/${documentId}/${filename}`;
 }
 
-export async function saveUploadedFile(relativePath: string, buffer: Buffer) {
-  const fullPath = path.join(STORAGE_ROOT, relativePath);
-  await mkdir(path.dirname(fullPath), { recursive: true });
-  await writeFile(fullPath, buffer);
+export async function saveUploadedFile(blobPath: string, buffer: Buffer): Promise<string> {
+  const blob = await put(blobPath, buffer, {
+    access: "public",
+    addRandomSuffix: false,
+    contentType: "application/pdf",
+  });
+  return blob.url;
 }
 
-export async function readStoredFile(relativePath: string): Promise<Buffer> {
-  return readFile(path.join(STORAGE_ROOT, relativePath));
+export async function readStoredFile(storageUrl: string): Promise<Buffer> {
+  const res = await fetch(storageUrl);
+  if (!res.ok) throw new Error(`Failed to fetch stored file: ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+export async function deleteStoredFile(storageUrl: string): Promise<void> {
+  await del(storageUrl);
 }

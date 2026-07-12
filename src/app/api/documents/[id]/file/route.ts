@@ -18,7 +18,7 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const buffer = await readStoredFile(document.storagePath);
+  const buffer = await readStoredFile(document.storageUrl);
   return new Response(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/pdf",

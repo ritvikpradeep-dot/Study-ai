@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { documentStoragePath, saveUploadedFile } from "@/lib/storage";
+import { documentBlobPath, saveUploadedFile } from "@/lib/storage";
 import { extractPdfText } from "@/lib/pdf";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
@@ -57,22 +57,22 @@ export async function POST(request: Request) {
       userId: session.user.id,
       title: file.name.replace(/\.pdf$/i, ""),
       filename: file.name,
-      storagePath: "",
+      storageUrl: "",
       fileSize: file.size,
       status: "processing",
     },
   });
 
-  const storagePath = documentStoragePath(session.user.id, document.id, file.name);
+  const blobPath = documentBlobPath(session.user.id, document.id, file.name);
 
   try {
-    await saveUploadedFile(storagePath, buffer);
+    const storageUrl = await saveUploadedFile(blobPath, buffer);
     const { text, pageCount } = await extractPdfText(new Uint8Array(buffer));
 
     const updated = await prisma.document.update({
       where: { id: document.id },
       data: {
-        storagePath,
+        storageUrl,
         pageCount,
         textContent: text,
         status: "ready",
