@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { DocumentWorkspace } from "@/components/document-workspace";
 import { AppShell } from "@/components/app-shell";
+import { canAccessDocument } from "@/lib/documents";
 
 export default async function DocumentPage({
   params,
@@ -14,7 +15,7 @@ export default async function DocumentPage({
   if (!session?.user) notFound();
 
   const document = await prisma.document.findUnique({ where: { id } });
-  if (!document || document.userId !== session.user.id) notFound();
+  if (!document || !(await canAccessDocument(session.user.id, document))) notFound();
 
   if (document.status === "processing") {
     return (

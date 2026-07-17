@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, PanelLeftClose, PanelLeftOpen, FileText } from "lucide-react";
+import { LayoutDashboard, PanelLeftClose, PanelLeftOpen, FileText, UsersRound } from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -56,6 +56,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           collapsed={collapsed}
           icon={<LayoutDashboard size={17} />}
           label="Dashboard"
+        />
+        <SidebarLink
+          href="/teams"
+          active={pathname.startsWith("/teams")}
+          collapsed={collapsed}
+          icon={<UsersRound size={17} />}
+          label="Teams"
         />
 
         {!collapsed && (

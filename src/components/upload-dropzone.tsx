@@ -10,7 +10,13 @@ function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function UploadDropzone({ onUploaded }: { onUploaded?: () => void }) {
+export function UploadDropzone({
+  onUploaded,
+  teamId,
+}: {
+  onUploaded?: () => void;
+  teamId?: string;
+}) {
   const router = useRouter();
   const [uploading, setUploading] = useState(false);
   const [progressLabel, setProgressLabel] = useState<string | null>(null);
@@ -24,6 +30,7 @@ export function UploadDropzone({ onUploaded }: { onUploaded?: () => void }) {
 
       const formData = new FormData();
       formData.append("file", file);
+      if (teamId) formData.append("teamId", teamId);
 
       try {
         const res = await fetch("/api/documents", { method: "POST", body: formData });
@@ -42,7 +49,7 @@ export function UploadDropzone({ onUploaded }: { onUploaded?: () => void }) {
         setTimeout(() => setProgressLabel(null), 1500);
       }
     },
-    [onUploaded, router]
+    [onUploaded, router, teamId]
   );
 
   const onDrop = useCallback(

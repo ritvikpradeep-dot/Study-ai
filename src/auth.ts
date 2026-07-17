@@ -30,6 +30,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user || !user.passwordHash) return null;
+        if (!user.isActive) return null;
 
         const valid = await bcrypt.compare(password, user.passwordHash);
         if (!valid) return null;
@@ -49,11 +50,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async jwt({ token, user }) {
       if (user?.id) token.userId = user.id;
+      const userId = token.userId as string | undefined;
+      if (!userId) return token;
+
+      // Re-check role/active status from the DB on every request so admin
+      // promotions and deactivations take effect without forcing a re-login.
+      const dbUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true, isActive: true },
+      });
+      if (!dbUser || !dbUser.isActive) {
+        token.userId = undefined;
+        token.role = undefined;
+        return token;
+      }
+      token.role = dbUser.role;
       return token;
     },
     async session({ session, token }) {
-      if (session.user && token.userId) {
-        session.user.id = token.userId as string;
+      const userId = token.userId as string | undefined;
+      if (!userId) {
+        // Deactivated (or deleted) user: strip user off the session so
+        // `session?.user` checks throughout the app treat this as signed out.
+        return { ...session, user: undefined } as unknown as typeof session;
+      }
+      if (session.user) {
+        session.user.id = userId;
+        session.user.role = (token.role as "USER" | "ADMIN" | undefined) ?? "USER";
       }
       return session;
     },

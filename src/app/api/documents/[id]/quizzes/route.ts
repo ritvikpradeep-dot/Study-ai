@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { generateJson, generateText, isAiConfigured, clampDocumentText } from "@/lib/ai";
+import { generateJson, generateText, isAiConfigured, clampDocumentText, logAiUsage, type AiUsage } from "@/lib/ai";
+import { canAccessDocument } from "@/lib/documents";
 
 type GeneratedQuestion = {
   type: "mcq" | "short_answer";
@@ -27,7 +28,7 @@ export async function GET(
   const { id } = await params;
 
   const document = await prisma.document.findUnique({ where: { id } });
-  if (!document || document.userId !== session.user.id) {
+  if (!document || !(await canAccessDocument(session.user.id, document))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -43,12 +44,13 @@ export async function GET(
   return NextResponse.json({ quizzes });
 }
 
-async function summarizeForQuiz(documentText: string): Promise<string> {
+async function summarizeForQuiz(documentText: string, onUsage: (usage: AiUsage) => void): Promise<string> {
   const text = await generateText({
     system:
       "Summarize the document in 1-2 paragraphs, capturing the key facts, concepts, and terminology a student would be tested on.",
     user: documentText,
     maxTokens: 3000,
+    onUsage,
   });
   return text || documentText;
 }
@@ -71,7 +73,7 @@ export async function POST(
 
   const { id } = await params;
   const document = await prisma.document.findUnique({ where: { id } });
-  if (!document || document.userId !== session.user.id) {
+  if (!document || !(await canAccessDocument(session.user.id, document))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   if (!document.textContent) {
@@ -96,10 +98,16 @@ export async function POST(
 
   const documentText = clampDocumentText(document.textContent);
 
+  const usageTotals: AiUsage = { promptTokens: 0, completionTokens: 0 };
+  const accumulateUsage = (usage: AiUsage) => {
+    usageTotals.promptTokens = (usageTotals.promptTokens ?? 0) + (usage.promptTokens ?? 0);
+    usageTotals.completionTokens = (usageTotals.completionTokens ?? 0) + (usage.completionTokens ?? 0);
+  };
+
   try {
     let sourceMaterial = documentText;
     if (source === "summary") {
-      sourceMaterial = await summarizeForQuiz(documentText);
+      sourceMaterial = await summarizeForQuiz(documentText, accumulateUsage);
     }
 
     const typeList = types.join(" and ");
@@ -118,6 +126,14 @@ export async function POST(
       system,
       user,
       maxTokens: Math.max(4000, Math.min(10000, 500 * questionCount + 2000)),
+      onUsage: accumulateUsage,
+    });
+
+    await logAiUsage({
+      userId: session.user.id,
+      documentId: id,
+      feature: "quiz_generate",
+      usage: usageTotals,
     });
 
     const questions = (result.questions || []).filter(

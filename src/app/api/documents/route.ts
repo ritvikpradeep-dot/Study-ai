@@ -6,14 +6,31 @@ import { extractPdfText } from "@/lib/pdf";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const { searchParams } = new URL(request.url);
+  const teamId = searchParams.get("teamId");
+
+  let where: { userId: string; teamId: null } | { teamId: string };
+  if (teamId) {
+    const membership = await prisma.teamMember.findUnique({
+      where: { teamId_userId: { teamId, userId: session.user.id } },
+    });
+    if (!membership) {
+      return NextResponse.json({ error: "Not a member of this team." }, { status: 403 });
+    }
+    where = { teamId };
+  } else {
+    // Personal documents only — team documents are opt-in and fetched via ?teamId=.
+    where = { userId: session.user.id, teamId: null };
+  }
+
   const documents = await prisma.document.findMany({
-    where: { userId: session.user.id },
+    where,
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -24,6 +41,8 @@ export async function GET() {
       status: true,
       errorMessage: true,
       createdAt: true,
+      userId: true,
+      user: { select: { name: true, email: true } },
     },
   });
 
@@ -38,6 +57,7 @@ export async function POST(request: Request) {
 
   const formData = await request.formData();
   const file = formData.get("file");
+  const teamId = formData.get("teamId");
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "No file provided." }, { status: 400 });
@@ -49,12 +69,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "File is too large (max 50MB)." }, { status: 400 });
   }
 
+  let resolvedTeamId: string | null = null;
+  if (typeof teamId === "string" && teamId) {
+    const membership = await prisma.teamMember.findUnique({
+      where: { teamId_userId: { teamId, userId: session.user.id } },
+    });
+    if (!membership) {
+      return NextResponse.json({ error: "Not a member of this team." }, { status: 403 });
+    }
+    resolvedTeamId = teamId;
+  }
+
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
 
   const document = await prisma.document.create({
     data: {
       userId: session.user.id,
+      teamId: resolvedTeamId,
       title: file.name.replace(/\.pdf$/i, ""),
       filename: file.name,
       storageUrl: "",

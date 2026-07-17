@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { canAccessDocument } from "@/lib/documents";
 
 type AnswerInput = {
   questionId: string;
@@ -19,9 +20,9 @@ export async function POST(
 
   const quiz = await prisma.quiz.findUnique({
     where: { id },
-    include: { document: { select: { userId: true } }, questions: true },
+    include: { document: { select: { userId: true, teamId: true } }, questions: true },
   });
-  if (!quiz || quiz.document.userId !== session.user.id) {
+  if (!quiz || !(await canAccessDocument(session.user.id, quiz.document))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { streamText, isAiConfigured, clampDocumentText } from "@/lib/ai";
+import { streamText, isAiConfigured, clampDocumentText, logAiUsage } from "@/lib/ai";
+import { canAccessDocument } from "@/lib/documents";
 
 export async function GET(
   _request: Request,
@@ -12,7 +13,7 @@ export async function GET(
   }
   const { id } = await params;
   const document = await prisma.document.findUnique({ where: { id } });
-  if (!document || document.userId !== session.user.id) {
+  if (!document || !(await canAccessDocument(session.user.id, document))) {
     return new Response("Not found", { status: 404 });
   }
 
@@ -41,7 +42,7 @@ export async function POST(
 
   const { id } = await params;
   const document = await prisma.document.findUnique({ where: { id } });
-  if (!document || document.userId !== session.user.id) {
+  if (!document || !(await canAccessDocument(session.user.id, document))) {
     return new Response("Not found", { status: 404 });
   }
   if (!document.textContent) {
@@ -94,10 +95,16 @@ export async function POST(
           maxTokens: 2048,
         });
 
-        for await (const chunk of chunks) {
+        let usage;
+        while (true) {
+          const step = await chunks.next();
+          if (step.done) {
+            usage = step.value;
+            break;
+          }
           if (request.signal.aborted) break;
-          fullResponse += chunk;
-          controller.enqueue(encoder.encode(chunk));
+          fullResponse += step.value;
+          controller.enqueue(encoder.encode(step.value));
         }
 
         if (fullResponse) {
@@ -105,6 +112,7 @@ export async function POST(
             data: { documentId: id, role: "assistant", content: fullResponse },
           });
         }
+        await logAiUsage({ userId: session.user.id, documentId: id, feature: "chat", usage });
       } catch (err) {
         const message = err instanceof Error ? err.message : "unknown error";
         controller.enqueue(encoder.encode(`\n\n[Error: ${message}]`));

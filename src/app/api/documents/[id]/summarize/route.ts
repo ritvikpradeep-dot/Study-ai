@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { streamText, isAiConfigured, clampDocumentText } from "@/lib/ai";
+import { streamText, isAiConfigured, clampDocumentText, logAiUsage } from "@/lib/ai";
+import { canAccessDocument } from "@/lib/documents";
 
 const LENGTH_INSTRUCTIONS: Record<string, string> = {
   "one-sentence": "Summarize it in exactly one sentence.",
@@ -37,7 +38,7 @@ export async function POST(
 
   const { id } = await params;
   const document = await prisma.document.findUnique({ where: { id } });
-  if (!document || document.userId !== session.user.id) {
+  if (!document || !(await canAccessDocument(session.user.id, document))) {
     return new Response("Not found", { status: 404 });
   }
   if (!document.textContent) {
@@ -84,9 +85,16 @@ export async function POST(
           maxTokens: 4096,
         });
 
-        for await (const chunk of chunks) {
-          controller.enqueue(encoder.encode(chunk));
+        let usage;
+        while (true) {
+          const step = await chunks.next();
+          if (step.done) {
+            usage = step.value;
+            break;
+          }
+          controller.enqueue(encoder.encode(step.value));
         }
+        await logAiUsage({ userId: session.user.id, documentId: id, feature: "summarize", usage });
       } catch (err) {
         controller.enqueue(
           encoder.encode(`\n\n[Error generating summary: ${err instanceof Error ? err.message : "unknown error"}]`)

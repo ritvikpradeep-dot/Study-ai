@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 import { AppearanceMenu } from "@/components/appearance-menu";
 import { Button } from "@/components/ui/button";
-import { Sparkles } from "lucide-react";
+import { Sparkles, ShieldAlert } from "lucide-react";
 
 export function Navbar() {
   const { data: session, status } = useSession();
@@ -22,6 +22,11 @@ export function Navbar() {
         <AppearanceMenu />
         {status === "authenticated" ? (
           <>
+            {session.user?.role === "ADMIN" && (
+              <Button variant="ghost" size="sm" href="/admin">
+                <ShieldAlert size={15} /> Admin
+              </Button>
+            )}
             <span className="hidden text-sm opacity-70 sm:inline">{session.user?.email}</span>
             <Button variant="secondary" size="sm" onClick={() => signOut({ callbackUrl: "/" })}>
               Sign out

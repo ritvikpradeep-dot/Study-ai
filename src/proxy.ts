@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { auth } from "@/auth";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/documents"];
+const PROTECTED_PREFIXES = ["/dashboard", "/documents", "/teams", "/admin"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -16,9 +16,13 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  if (pathname.startsWith("/admin") && session.user.role !== "ADMIN") {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/documents/:path*"],
+  matcher: ["/dashboard/:path*", "/documents/:path*", "/teams/:path*", "/admin/:path*"],
 };
