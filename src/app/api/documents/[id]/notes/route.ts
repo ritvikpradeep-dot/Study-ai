@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { canAccessDocument } from "@/lib/documents";
+import { canAccessDocument, canEditDocument } from "@/lib/documents";
 import { logActivity } from "@/lib/activity";
+import { notifyTeam } from "@/lib/pusher-server";
 
 export async function GET(
   _request: Request,
@@ -69,6 +70,12 @@ export async function PUT(
   if (!document || !(await canAccessDocument(session.user.id, document))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  if (!(await canEditDocument(session.user.id, document))) {
+    return NextResponse.json(
+      { error: "You have view-only access to this document. Ask the host to grant you edit access." },
+      { status: 403 }
+    );
+  }
 
   const body = await request.json().catch(() => ({}));
   const content = typeof body.content === "string" ? body.content : "";
@@ -96,6 +103,11 @@ export async function PUT(
       actorId: session.user.id,
       action: "NOTE_ADDED",
       metadata: { documentId: id },
+    });
+    await notifyTeam(document.teamId, "note-added", {
+      documentId: id,
+      authorId: session.user.id,
+      authorName: session.user.name || session.user.email,
     });
   }
 

@@ -1,24 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-
-function describe(action: string, actorName: string, metadata: unknown): string {
-  const meta = (metadata as Record<string, unknown>) ?? {};
-  switch (action) {
-    case "DOCUMENT_UPLOADED":
-      return `${actorName} uploaded ${typeof meta.title === "string" ? `"${meta.title}"` : "a document"}`;
-    case "NOTE_ADDED":
-      return `${actorName} added a note`;
-    case "HIGHLIGHT_ADDED":
-      return `${actorName} added a highlight${typeof meta.page === "number" ? ` on page ${meta.page}` : ""}`;
-    case "MEMBER_JOINED":
-      return `${actorName} joined the room`;
-    case "POMODORO_STARTED":
-      return `${actorName} started a Pomodoro session`;
-    default:
-      return `${actorName} did something`;
-  }
-}
+import { describeActivity } from "@/lib/activity-messages";
 
 export async function GET(
   _request: Request,
@@ -36,7 +19,7 @@ export async function GET(
   const entries = await prisma.activityLogEntry.findMany({
     where: { teamId: id },
     orderBy: { createdAt: "desc" },
-    take: 50,
+    take: 100,
     include: { actor: { select: { name: true, email: true } } },
   });
 
@@ -45,7 +28,10 @@ export async function GET(
       const actorName = e.actor.name || e.actor.email;
       return {
         id: e.id,
-        message: describe(e.action, actorName, e.metadata),
+        action: e.action,
+        actorId: e.actorId,
+        actorName,
+        message: describeActivity(e.action, actorName, e.metadata as Record<string, unknown> | null),
         createdAt: e.createdAt,
       };
     }),

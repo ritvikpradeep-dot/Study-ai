@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import { requireHost } from "@/lib/host";
+import { notifyTeam } from "@/lib/pusher-server";
 
 async function requireMembership(teamId: string, userId: string) {
   return prisma.teamMember.findUnique({ where: { teamId_userId: { teamId, userId } } });
@@ -26,15 +28,10 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
-
-  const membership = await requireMembership(id, session.user.id);
-  if (!membership) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (membership.role !== "OWNER") {
-    return NextResponse.json({ error: "Only the room's host can start a timer." }, { status: 403 });
-  }
+  const gate = await requireHost(id);
+  if (!gate) return NextResponse.json({ error: "Only the room's host can start a timer." }, { status: 403 });
+  const session = gate.session;
 
   const body = await request.json().catch(() => ({}));
   const focusMinutes = Number.isInteger(body.focusMinutes) && body.focusMinutes > 0 && body.focusMinutes <= 180
@@ -78,6 +75,7 @@ export async function POST(
     action: "POMODORO_STARTED",
     metadata: { focusMinutes, breakMinutes, totalSessions },
   });
+  await notifyTeam(id, "pomodoro-started", { focusMinutes, breakMinutes, totalSessions });
 
   return NextResponse.json({ pomodoro });
 }
@@ -131,6 +129,12 @@ export async function PATCH(
     },
   });
 
+  await notifyTeam(id, "pomodoro-phase-changed", {
+    currentPhase: updated.currentPhase,
+    currentSessionNumber: updated.currentSessionNumber,
+    isRunning: updated.isRunning,
+  });
+
   return NextResponse.json({ pomodoro: updated });
 }
 
@@ -138,16 +142,13 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
-
-  const membership = await requireMembership(id, session.user.id);
-  if (!membership) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (membership.role !== "OWNER") {
-    return NextResponse.json({ error: "Only the room's host can stop the timer." }, { status: 403 });
-  }
+  const gate = await requireHost(id);
+  if (!gate) return NextResponse.json({ error: "Only the room's host can stop the timer." }, { status: 403 });
 
   await prisma.pomodoroSession.deleteMany({ where: { teamId: id } });
+  await logActivity({ teamId: id, actorId: gate.session.user.id, action: "POMODORO_STOPPED" });
+  await notifyTeam(id, "pomodoro-stopped", {});
+
   return NextResponse.json({ ok: true });
 }

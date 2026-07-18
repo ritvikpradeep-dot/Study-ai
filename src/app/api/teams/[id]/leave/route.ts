@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { logActivity } from "@/lib/activity";
+import { notifyTeam } from "@/lib/pusher-server";
 
 export async function POST(
   _request: Request,
@@ -21,6 +23,13 @@ export async function POST(
     );
   }
 
-  await prisma.teamMember.delete({ where: { id: membership.id } });
+  await prisma.$transaction([
+    prisma.teamMember.delete({ where: { id: membership.id } }),
+    prisma.editPermission.deleteMany({ where: { teamId: id, userId: session.user.id } }),
+  ]);
+
+  await logActivity({ teamId: id, actorId: session.user.id, action: "MEMBER_LEFT" });
+  await notifyTeam(id, "member-left", { userId: session.user.id });
+
   return NextResponse.json({ ok: true });
 }

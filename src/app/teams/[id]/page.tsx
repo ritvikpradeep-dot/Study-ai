@@ -49,6 +49,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
             name: team.name,
             inviteCode: team.inviteCode,
             myRole: membership.role,
+            closedAt: team.closedAt?.toISOString() ?? null,
             members: team.members.map((m) => ({
               id: m.user.id,
               name: m.user.name,

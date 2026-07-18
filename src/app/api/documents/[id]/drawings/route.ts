@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { canAccessDocument } from "@/lib/documents";
+import { canAccessDocument, canEditDocument } from "@/lib/documents";
 import { colorForAuthor } from "@/lib/annotation-colors";
+import { logActivity } from "@/lib/activity";
+import { notifyTeam } from "@/lib/pusher-server";
 
 const VALID_TOOLS = ["PEN", "RECTANGLE", "CIRCLE", "ARROW"];
 const VALID_PEN_TYPES = ["PEN", "HIGHLIGHTER", "MARKER"];
@@ -54,6 +56,12 @@ export async function POST(
   if (!document || !(await canAccessDocument(session.user.id, document))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  if (!(await canEditDocument(session.user.id, document))) {
+    return NextResponse.json(
+      { error: "You have view-only access to this document. Ask the host to grant you edit access." },
+      { status: 403 }
+    );
+  }
 
   const body = await request.json().catch(() => ({}));
   const tool = typeof body.tool === "string" && VALID_TOOLS.includes(body.tool) ? body.tool : null;
@@ -99,6 +107,16 @@ export async function POST(
       strokeWidth,
     },
   });
+
+  if (document.teamId) {
+    await logActivity({
+      teamId: document.teamId,
+      actorId: session.user.id,
+      action: "DRAWING_ADDED",
+      metadata: { documentId: id, page },
+    });
+    await notifyTeam(document.teamId, "drawing-added", { documentId: id, drawing });
+  }
 
   return NextResponse.json({ drawing });
 }

@@ -37,6 +37,7 @@ model User {
   reactions         Reaction[]
   activityLogEntries ActivityLogEntry[]
   pomodoroSessionsStarted PomodoroSession[]
+  editPermissions   EditPermission[]
 }
 
 model Account {
@@ -225,8 +226,17 @@ enum ActivityAction {
   DOCUMENT_UPLOADED
   NOTE_ADDED
   HIGHLIGHT_ADDED
+  DRAWING_ADDED
+  STICKY_NOTE_ADDED
   MEMBER_JOINED
+  MEMBER_LEFT
+  MEMBER_KICKED
+  EDIT_ACCESS_GRANTED
+  EDIT_ACCESS_REVOKED
   POMODORO_STARTED
+  POMODORO_STOPPED
+  ROOM_CLOSED
+  INVITE_CODE_REGENERATED
 }
 
 model ActivityLogEntry {
@@ -266,24 +276,47 @@ model PomodoroSession {
   startedBy User @relation(fields: [startedById], references: [id], onDelete: Cascade)
 }
 
+// Explicit grant of annotation write access to a non-host room member.
+// Absence of a row (or canEdit: false) means view-only — the host always
+// has implicit edit access regardless of this table. Revoking sets
+// canEdit: false rather than deleting the row, keeping grantedByHostAt as a
+// record of the last permission change.
+model EditPermission {
+  id             String   @id @default(cuid())
+  teamId         String
+  userId         String
+  canEdit        Boolean  @default(true)
+  grantedByHostAt DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+}
+
 enum TeamRole {
   OWNER
   MEMBER
 }
 
 model Team {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   name       String
   ownerId    String
-  inviteCode String   @unique
-  createdAt  DateTime @default(now())
+  inviteCode String    @unique
+  createdAt  DateTime  @default(now())
+  // Reversible archive flag ("ending/closing a room") — blocks new
+  // uploads/joins/edits but keeps existing history visible, rather than
+  // deleting the room outright.
+  closedAt   DateTime?
 
-  owner            User              @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  members          TeamMember[]
-  documents        Document[]
-  messages         RoomMessage[]
-  activityLog      ActivityLogEntry[]
-  pomodoroSession  PomodoroSession?
+  owner           User               @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members         TeamMember[]
+  documents       Document[]
+  messages        RoomMessage[]
+  activityLog     ActivityLogEntry[]
+  pomodoroSession PomodoroSession?
+  editPermissions EditPermission[]
 }
 
 // The room's human group chat — distinct from ChatMessage, which is the

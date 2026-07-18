@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { canAccessDocument } from "@/lib/documents";
+import { canAccessDocument, canEditDocument } from "@/lib/documents";
 import { colorForAuthor } from "@/lib/annotation-colors";
 import { logActivity } from "@/lib/activity";
+import { notifyTeam } from "@/lib/pusher-server";
 
 export async function GET(
   _request: Request,
@@ -52,6 +53,12 @@ export async function POST(
   if (!document || !(await canAccessDocument(session.user.id, document))) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  if (!(await canEditDocument(session.user.id, document))) {
+    return NextResponse.json(
+      { error: "You have view-only access to this document. Ask the host to grant you edit access." },
+      { status: 403 }
+    );
+  }
 
   const body = await request.json().catch(() => ({}));
   const textSnippet = typeof body.textSnippet === "string" ? body.textSnippet.trim().slice(0, 2000) : "";
@@ -81,6 +88,10 @@ export async function POST(
       actorId: session.user.id,
       action: "HIGHLIGHT_ADDED",
       metadata: { documentId: id, page },
+    });
+    await notifyTeam(document.teamId, "highlight-added", {
+      documentId: id,
+      highlight: { ...highlight, authorName: session.user.name || session.user.email },
     });
   }
 

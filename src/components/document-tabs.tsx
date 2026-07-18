@@ -22,11 +22,12 @@ export const DocumentTabs = forwardRef<
     title: string;
     teamId: string | null;
     isHost: boolean;
+    canEdit: boolean;
     initialSharedSummary: string | null;
     initialSummaryGeneratedAt: string | null;
   }
 >(function DocumentTabs(
-  { documentId, title, teamId, isHost, initialSharedSummary, initialSummaryGeneratedAt },
+  { documentId, title, teamId, isHost, canEdit, initialSharedSummary, initialSummaryGeneratedAt },
   notesRef
 ) {
     const [tab, setTab] = useState<Tab>("chat");
@@ -63,7 +64,7 @@ export const DocumentTabs = forwardRef<
               highlight captured while on another tab still has a live NotesPanel
               instance to append into via the ref. */}
           <div className={tab === "notes" ? "h-full" : "hidden"}>
-            <NotesPanel ref={notesRef} documentId={documentId} shared={Boolean(teamId)} />
+            <NotesPanel ref={notesRef} documentId={documentId} shared={Boolean(teamId)} canEdit={canEdit} />
           </div>
         </div>
       </div>

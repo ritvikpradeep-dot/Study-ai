@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { MAX_TEAM_MEMBERS } from "@/lib/teams";
 import { logActivity } from "@/lib/activity";
+import { notifyTeam } from "@/lib/pusher-server";
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -17,6 +18,7 @@ export async function POST(request: Request) {
     include: { _count: { select: { members: true } } },
   });
   if (!team) return NextResponse.json({ error: "Invalid invite code." }, { status: 404 });
+  if (team.closedAt) return NextResponse.json({ error: "This room is closed." }, { status: 400 });
 
   const existing = await prisma.teamMember.findUnique({
     where: { teamId_userId: { teamId: team.id, userId: session.user.id } },
@@ -55,6 +57,10 @@ export async function POST(request: Request) {
   }
 
   await logActivity({ teamId: team.id, actorId: session.user.id, action: "MEMBER_JOINED" });
+  await notifyTeam(team.id, "member-joined", {
+    userId: session.user.id,
+    name: session.user.name || session.user.email,
+  });
 
   return NextResponse.json({ team: { id: team.id, name: team.name } });
 }

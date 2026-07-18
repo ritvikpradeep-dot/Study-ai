@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, Check, UsersRound, LogOut } from "lucide-react";
+import { useSession } from "next-auth/react";
+import type { Channel } from "pusher-js";
+import { Copy, Check, UsersRound, LogOut, Pencil, UserX, RefreshCw, Lock, Unlock } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +14,7 @@ import { RoomChat } from "@/components/room-chat";
 import { PomodoroTimer } from "@/components/pomodoro-timer";
 import { ActivityFeed } from "@/components/activity-feed";
 import { useToast } from "@/components/ui/toast";
+import { useTeamChannel } from "@/hooks/use-team-channel";
 import { MAX_TEAM_MEMBERS } from "@/lib/teams";
 
 type Member = { id: string; name: string | null; email: string; role: "OWNER" | "MEMBER" };
@@ -46,20 +49,132 @@ export function TeamWorkspace({
     name: string;
     inviteCode: string;
     myRole: "OWNER" | "MEMBER";
+    closedAt: string | null;
     members: Member[];
   };
   documents: TeamDocument[];
 }) {
   const router = useRouter();
   const toast = useToast();
+  const { data: session } = useSession();
   const [copied, setCopied] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [editPermissions, setEditPermissions] = useState<Record<string, boolean>>({});
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
+  const isHost = team.myRole === "OWNER";
+
+  useEffect(() => {
+    fetch(`/api/teams/${team.id}/permissions`)
+      .then((r) => r.json())
+      .then((data) => {
+        const map: Record<string, boolean> = {};
+        for (const p of data.permissions ?? []) map[p.userId] = p.canEdit;
+        setEditPermissions(map);
+      })
+      .catch(() => {});
+  }, [team.id]);
+
+  const handleChannel = useCallback(
+    (channel: Channel) => {
+      channel.bind("document-uploaded", (data: { title: string }) => {
+        toast.show(`New document uploaded: "${data.title}"`, "success");
+        router.refresh();
+      });
+      channel.bind("member-joined", () => router.refresh());
+      channel.bind("member-left", () => router.refresh());
+      channel.bind("member-kicked", (data: { kickedUserId: string }) => {
+        if (data.kickedUserId === session?.user?.id) {
+          toast.show("You were removed from this room by the host.", "error");
+          router.push("/dashboard");
+          return;
+        }
+        router.refresh();
+      });
+      channel.bind("edit-permission-changed", (data: { userId: string; canEdit: boolean }) => {
+        setEditPermissions((prev) => ({ ...prev, [data.userId]: data.canEdit }));
+        if (data.userId === session?.user?.id) {
+          toast.show(data.canEdit ? "The host granted you edit access." : "The host revoked your edit access.", data.canEdit ? "success" : "default");
+        }
+      });
+      channel.bind("pomodoro-started", () => {
+        if (!isHost) toast.show("The host started a Pomodoro session.", "success");
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [team.id, session?.user?.id, isHost]
+  );
+
+  useTeamChannel(team.id, handleChannel);
 
   async function copyInviteCode() {
     await navigator.clipboard.writeText(team.inviteCode).catch(() => {});
     setCopied(true);
     toast.show("Invite code copied.", "success");
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function regenerateCode() {
+    if (!confirm("Generate a new invite code? The old code will stop working immediately.")) return;
+    const res = await fetch(`/api/teams/${team.id}/regenerate-code`, { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.show(data.error || "Failed to regenerate code.", "error");
+      return;
+    }
+    toast.show("New invite code generated.", "success");
+    router.refresh();
+  }
+
+  async function toggleRoomClosed() {
+    const closing = !team.closedAt;
+    if (closing && !confirm("Close this room? Members won't be able to join or edit until you reopen it.")) return;
+    const res = await fetch(`/api/teams/${team.id}/close`, { method: closing ? "POST" : "DELETE" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      toast.show(data.error || "Failed to update room status.", "error");
+      return;
+    }
+    router.refresh();
+  }
+
+  async function toggleEditAccess(userId: string) {
+    const canEdit = !editPermissions[userId];
+    setBusyUserId(userId);
+    try {
+      const res = await fetch(`/api/teams/${team.id}/permissions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, canEdit }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.show(data.error || "Failed to update edit access.", "error");
+        return;
+      }
+      setEditPermissions((prev) => ({ ...prev, [userId]: canEdit }));
+    } finally {
+      setBusyUserId(null);
+    }
+  }
+
+  async function kickMember(userId: string, name: string) {
+    if (!confirm(`Remove ${name} from this room?`)) return;
+    setBusyUserId(userId);
+    try {
+      const res = await fetch(`/api/teams/${team.id}/kick`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.show(data.error || "Failed to remove member.", "error");
+        return;
+      }
+      router.refresh();
+    } finally {
+      setBusyUserId(null);
+    }
   }
 
   async function leaveTeam() {
@@ -86,22 +201,44 @@ export function TeamWorkspace({
           <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
             <UsersRound size={22} className="text-accent" />
             {team.name}
+            {team.closedAt && <Badge tone="danger">Closed</Badge>}
           </h1>
           <p className="mt-1 text-sm opacity-70">
             {team.members.length}/{MAX_TEAM_MEMBERS} members ·{" "}
             {documents.length} shared document{documents.length === 1 ? "" : "s"}
           </p>
         </div>
-        {team.myRole !== "OWNER" && (
-          <Button variant="secondary" size="sm" onClick={leaveTeam} disabled={leaving}>
-            <LogOut size={14} /> Leave room
-          </Button>
-        )}
+        <div className="flex gap-2">
+          {isHost && (
+            <Button variant="secondary" size="sm" onClick={toggleRoomClosed}>
+              {team.closedAt ? (
+                <>
+                  <Unlock size={14} /> Reopen room
+                </>
+              ) : (
+                <>
+                  <Lock size={14} /> Close room
+                </>
+              )}
+            </Button>
+          )}
+          {!isHost && (
+            <Button variant="secondary" size="sm" onClick={leaveTeam} disabled={leaving}>
+              <LogOut size={14} /> Leave room
+            </Button>
+          )}
+        </div>
       </div>
+
+      {team.closedAt && (
+        <Card className="border-red-500/30 p-4 text-sm">
+          This room is closed. {isHost ? "Reopen it to allow new uploads, joins, and edits." : "The host has closed it — existing content is still viewable."}
+        </Card>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="flex flex-col gap-6 lg:col-span-2">
-          {team.myRole === "OWNER" ? (
+          {isHost && !team.closedAt ? (
             <div>
               <h2 className="mb-3 text-lg font-medium">Upload to this room</h2>
               <UploadDropzone teamId={team.id} onUploaded={() => router.refresh()} />
@@ -144,7 +281,7 @@ export function TeamWorkspace({
         </div>
 
         <div className="flex flex-col gap-6">
-          <PomodoroTimer teamId={team.id} isHost={team.myRole === "OWNER"} />
+          <PomodoroTimer teamId={team.id} isHost={isHost} />
           <ActivityFeed teamId={team.id} />
 
           <Card className="p-5">
@@ -157,19 +294,49 @@ export function TeamWorkspace({
               <span className="truncate">{team.inviteCode}</span>
               {copied ? <Check size={15} className="text-emerald-500" /> : <Copy size={15} className="opacity-60" />}
             </button>
+            {isHost && (
+              <button
+                onClick={regenerateCode}
+                className="mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs opacity-70 transition hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
+              >
+                <RefreshCw size={11} /> Generate new code
+              </button>
+            )}
           </Card>
 
           <Card className="p-5">
             <h2 className="mb-3 font-medium">Members</h2>
-            <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-3">
               {team.members.map((m) => (
                 <div key={m.id} className="flex items-center justify-between gap-2 text-sm">
                   <div className="min-w-0">
                     <p className="truncate">{m.name || m.email}</p>
                   </div>
-                  <Badge tone={m.role === "OWNER" ? "accent" : "neutral"}>
-                    {m.role === "OWNER" ? "Host" : "Member"}
-                  </Badge>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Badge tone={m.role === "OWNER" ? "accent" : editPermissions[m.id] ? "success" : "neutral"}>
+                      {m.role === "OWNER" ? "Host" : editPermissions[m.id] ? "Can edit" : "View only"}
+                    </Badge>
+                    {isHost && m.role !== "OWNER" && (
+                      <>
+                        <button
+                          onClick={() => toggleEditAccess(m.id)}
+                          disabled={busyUserId === m.id}
+                          title={editPermissions[m.id] ? "Revoke edit access" : "Grant edit access"}
+                          className="rounded-lg p-1 opacity-60 transition hover:bg-black/5 hover:opacity-100 dark:hover:bg-white/10"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          onClick={() => kickMember(m.id, m.name || m.email)}
+                          disabled={busyUserId === m.id}
+                          title="Remove from room"
+                          className="rounded-lg p-1 opacity-60 transition hover:bg-red-500/10 hover:text-red-500 hover:opacity-100"
+                        >
+                          <UserX size={13} />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

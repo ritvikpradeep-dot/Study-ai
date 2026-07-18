@@ -18,8 +18,10 @@ export type NotesPanelHandle = {
   appendHighlight: (text: string, page?: number) => void;
 };
 
-export const NotesPanel = forwardRef<NotesPanelHandle, { documentId: string; shared: boolean }>(
-  function NotesPanel({ documentId, shared }, ref) {
+export const NotesPanel = forwardRef<
+  NotesPanelHandle,
+  { documentId: string; shared: boolean; canEdit: boolean }
+>(function NotesPanel({ documentId, shared, canEdit }, ref) {
     const [content, setContent] = useState("");
     const [otherNotes, setOtherNotes] = useState<OtherNote[]>([]);
     const [reactions, setReactions] = useState<ReactionItem[]>([]);
@@ -167,18 +169,24 @@ export const NotesPanel = forwardRef<NotesPanelHandle, { documentId: string; sha
               setSaveState("idle");
               scheduleSave(e.target.value);
             }}
-            disabled={!loaded}
-            placeholder="Type notes as you read — they save automatically. Select text in the PDF to add a highlighted excerpt here."
+            disabled={!loaded || !canEdit}
+            placeholder={
+              canEdit
+                ? "Type notes as you read — they save automatically. Select text in the PDF to add a highlighted excerpt here."
+                : "You have view-only access to this document."
+            }
             className="glass min-h-[160px] w-full resize-none rounded-2xl p-4 text-sm leading-relaxed outline-none placeholder:opacity-40 focus:ring-2 focus:ring-accent disabled:opacity-50"
           />
-          <button
-            onClick={generateMySummary}
-            disabled={generating}
-            className="mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs opacity-70 transition hover:bg-black/5 hover:opacity-100 disabled:opacity-40 dark:hover:bg-white/10"
-          >
-            <Sparkles size={12} />
-            {generating ? "Generating…" : "Generate my summary"}
-          </button>
+          {canEdit && (
+            <button
+              onClick={generateMySummary}
+              disabled={generating}
+              className="mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs opacity-70 transition hover:bg-black/5 hover:opacity-100 disabled:opacity-40 dark:hover:bg-white/10"
+            >
+              <Sparkles size={12} />
+              {generating ? "Generating…" : "Generate my summary"}
+            </button>
+          )}
         </div>
 
         {shared && otherNotes.length > 0 && (

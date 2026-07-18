@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Document, Page, Thumbnail, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -18,11 +18,18 @@ import {
   X,
   Pencil,
 } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import type { Channel } from "pusher-js";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DrawingCanvas } from "@/components/drawing-canvas";
 import { StickyNoteLayer, type StickyNoteLayerHandle } from "@/components/sticky-note-layer";
 import { ReactionBar, type ReactionItem } from "@/components/reaction-bar";
+import { useTeamChannel } from "@/hooks/use-team-channel";
+import { throttle } from "@/lib/throttle";
+import { colorForAuthor } from "@/lib/annotation-colors";
+import { useToast } from "@/components/ui/toast";
 
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
@@ -35,6 +42,8 @@ type HighlightItem = {
   authorName: string;
   isMine: boolean;
 };
+
+type RemoteCursor = { authorId: string; authorName: string; page: number; x: number; y: number };
 
 function IconButton({
   onClick,
@@ -74,6 +83,8 @@ export function PdfViewer({
   onToggleFullscreen,
   onAddToNotes,
   shared = false,
+  canEdit = true,
+  teamId = null,
 }: {
   documentId: string;
   pageCount: number | null;
@@ -81,7 +92,12 @@ export function PdfViewer({
   onToggleFullscreen?: () => void;
   onAddToNotes?: (text: string, page: number) => void;
   shared?: boolean;
+  canEdit?: boolean;
+  teamId?: string | null;
 }) {
+  const { data: session } = useSession();
+  const router = useRouter();
+  const toast = useToast();
   const [numPages, setNumPages] = useState<number>(pageCount ?? 0);
   const [currentPage, setCurrentPage] = useState(1);
   const [scale, setScale] = useState(1.1);
@@ -91,6 +107,8 @@ export function PdfViewer({
 
   const [highlights, setHighlights] = useState<HighlightItem[]>([]);
   const [reactions, setReactions] = useState<ReactionItem[]>([]);
+  const [remoteCursors, setRemoteCursors] = useState<Record<string, RemoteCursor>>({});
+  const cursorTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [selection, setSelection] = useState<{
     text: string;
     x: number;
@@ -121,6 +139,72 @@ export function PdfViewer({
       .then((data) => setReactions(data.reactions ?? []))
       .catch(() => setReactions([]));
   }, [documentId]);
+
+  const handleChannel = useCallback(
+    (channel: Channel) => {
+      channel.bind(
+        "cursor-move",
+        (data: { documentId: string; page: number; x: number; y: number; authorId: string; authorName: string }) => {
+          if (data.documentId !== documentId || data.authorId === session?.user?.id) return;
+          setRemoteCursors((prev) => ({
+            ...prev,
+            [data.authorId]: { authorId: data.authorId, authorName: data.authorName, page: data.page, x: data.x, y: data.y },
+          }));
+          // Drop a cursor if its author goes quiet for a few seconds.
+          if (cursorTimeouts.current[data.authorId]) clearTimeout(cursorTimeouts.current[data.authorId]);
+          cursorTimeouts.current[data.authorId] = setTimeout(() => {
+            setRemoteCursors((prev) => {
+              const next = { ...prev };
+              delete next[data.authorId];
+              return next;
+            });
+          }, 4000);
+        }
+      );
+      channel.bind(
+        "highlight-added",
+        (data: { documentId: string; highlight: HighlightItem }) => {
+          if (data.documentId !== documentId || data.highlight.authorId === session?.user?.id) return;
+          setHighlights((prev) =>
+            prev.some((h) => h.id === data.highlight.id) ? prev : [...prev, { ...data.highlight, isMine: false }]
+          );
+        }
+      );
+      channel.bind("member-kicked", (data: { kickedUserId: string }) => {
+        if (data.kickedUserId !== session?.user?.id) return;
+        toast.show("You were removed from this room by the host.", "error");
+        router.push("/dashboard");
+      });
+    },
+    [documentId, session?.user?.id, router, toast]
+  );
+
+  useTeamChannel(teamId, handleChannel);
+
+  const broadcastCursor = useMemo(
+    () =>
+      throttle((page: number, x: number, y: number) => {
+        if (!teamId) return;
+        fetch(`/api/documents/${documentId}/cursor`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ page, x, y }),
+        }).catch(() => {});
+      }, 150),
+    [documentId, teamId]
+  );
+
+  const handlePageMouseMove = (e: React.MouseEvent) => {
+    if (!teamId || !pageWrapperRef.current) return;
+    const rect = pageWrapperRef.current.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    if (x < 0 || x > 1 || y < 0 || y > 1) return;
+    broadcastCursor(currentPage, x, y);
+  };
+
+  const currentPageCursors = Object.values(remoteCursors).filter((c) => c.page === currentPage);
 
   const toggleReaction = async (targetId: string, emoji: string) => {
     setReactions((prev) => {
@@ -161,6 +245,7 @@ export function PdfViewer({
   };
 
   const handleMouseUp = () => {
+    if (!canEdit) return;
     const sel = window.getSelection();
     const text = sel?.toString().trim();
     const container = containerRef.current;
@@ -290,35 +375,39 @@ export function PdfViewer({
           <PanelLeft size={16} />
         </IconButton>
 
-        <Tooltip label={drawMode ? "Stop drawing" : "Draw on page"}>
-          <button
-            onClick={() => {
-              setDrawMode((v) => !v);
-              setStickyMode(false);
-            }}
-            aria-label={drawMode ? "Stop drawing" : "Draw on page"}
-            className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
-              drawMode ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
-            }`}
-          >
-            <Pencil size={16} />
-          </button>
-        </Tooltip>
+        {canEdit && (
+          <>
+            <Tooltip label={drawMode ? "Stop drawing" : "Draw on page"}>
+              <button
+                onClick={() => {
+                  setDrawMode((v) => !v);
+                  setStickyMode(false);
+                }}
+                aria-label={drawMode ? "Stop drawing" : "Draw on page"}
+                className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+                  drawMode ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
+                }`}
+              >
+                <Pencil size={16} />
+              </button>
+            </Tooltip>
 
-        <Tooltip label={stickyMode ? "Cancel sticky note" : "Place a sticky note"}>
-          <button
-            onClick={() => {
-              setStickyMode((v) => !v);
-              setDrawMode(false);
-            }}
-            aria-label={stickyMode ? "Cancel sticky note" : "Place a sticky note"}
-            className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
-              stickyMode ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
-            }`}
-          >
-            <StickyNote size={16} />
-          </button>
-        </Tooltip>
+            <Tooltip label={stickyMode ? "Cancel sticky note" : "Place a sticky note"}>
+              <button
+                onClick={() => {
+                  setStickyMode((v) => !v);
+                  setDrawMode(false);
+                }}
+                aria-label={stickyMode ? "Cancel sticky note" : "Place a sticky note"}
+                className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+                  stickyMode ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
+                }`}
+              >
+                <StickyNote size={16} />
+              </button>
+            </Tooltip>
+          </>
+        )}
 
         {onToggleFullscreen && (
           <IconButton
@@ -352,8 +441,9 @@ export function PdfViewer({
         <div className="flex min-w-0 flex-1 flex-col gap-2 overflow-hidden">
           <div
             ref={containerRef}
-            className="glass relative flex-1 overflow-auto rounded-2xl p-4"
+            className="glass relative flex flex-1 flex-col items-center overflow-auto rounded-2xl p-4"
             onMouseUp={handleMouseUp}
+            onMouseMove={handlePageMouseMove}
           >
             {selection && (
               <div
@@ -418,6 +508,7 @@ export function PdfViewer({
                         width={pageDimensions.width}
                         height={pageDimensions.height}
                         active={drawMode}
+                        teamId={teamId}
                       />
                       <StickyNoteLayer
                         ref={stickyNoteLayerRef}
@@ -429,6 +520,24 @@ export function PdfViewer({
                         placing={stickyMode}
                         onPlaced={() => setStickyMode(false)}
                       />
+                      {currentPageCursors.map((c) => (
+                        <div
+                          key={c.authorId}
+                          className="pointer-events-none absolute z-20 flex flex-col items-start transition-[left,top] duration-100"
+                          style={{ left: c.x * pageDimensions.width, top: c.y * pageDimensions.height }}
+                        >
+                          <div
+                            className="h-3 w-3 rounded-full border-2 border-white shadow"
+                            style={{ backgroundColor: colorForAuthor(c.authorId) }}
+                          />
+                          <span
+                            className="mt-0.5 rounded-full px-1.5 py-0.5 text-[10px] text-white shadow"
+                            style={{ backgroundColor: colorForAuthor(c.authorId) }}
+                          >
+                            {c.authorName}
+                          </span>
+                        </div>
+                      ))}
                     </>
                   )}
                 </div>

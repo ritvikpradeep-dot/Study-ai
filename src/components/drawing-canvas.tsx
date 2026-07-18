@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useSession } from "next-auth/react";
+import type { Channel } from "pusher-js";
 import { Pencil, Square, Circle, ArrowUpRight, Eraser, Highlighter } from "lucide-react";
 import { colorForAuthor } from "@/lib/annotation-colors";
+import { useTeamChannel } from "@/hooks/use-team-channel";
+import { throttle } from "@/lib/throttle";
 
 type Point = { x: number; y: number };
 type Tool = "PEN" | "RECTANGLE" | "CIRCLE" | "ARROW";
@@ -122,21 +125,33 @@ function distanceToStroke(point: Point, d: { pathData: Point[] }) {
   return min;
 }
 
+type RemoteStroke = {
+  tool: Tool;
+  penType: PenType;
+  pathData: Point[];
+  color: string;
+  strokeWidth: number;
+};
+
 export function DrawingCanvas({
   documentId,
   page,
   width,
   height,
   active,
+  teamId = null,
 }: {
   documentId: string;
   page: number;
   width: number;
   height: number;
   active: boolean;
+  teamId?: string | null;
 }) {
   const { data: session } = useSession();
   const [drawings, setDrawings] = useState<DrawingItem[]>([]);
+  const [remoteStrokes, setRemoteStrokes] = useState<Record<string, RemoteStroke>>({});
+  const remoteStrokeTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [tool, setTool] = useState<ToolOrEraser>("PEN");
   const [penType, setPenType] = useState<PenType>("PEN");
   const [strokeWidth, setStrokeWidth] = useState(4);
@@ -156,6 +171,74 @@ export function DrawingCanvas({
       .catch(() => setDrawings([]));
   }, [documentId]);
 
+  const handleChannel = useCallback(
+    (channel: Channel) => {
+      channel.bind(
+        "stroke-preview",
+        (data: {
+          documentId: string;
+          page: number;
+          authorId: string;
+          tool: Tool;
+          penType: PenType;
+          pathData: Point[];
+          color: string;
+          strokeWidth: number;
+        }) => {
+          if (data.documentId !== documentId || data.page !== page || data.authorId === session?.user?.id) return;
+          setRemoteStrokes((prev) => ({
+            ...prev,
+            [data.authorId]: {
+              tool: data.tool,
+              penType: data.penType,
+              pathData: data.pathData,
+              color: data.color,
+              strokeWidth: data.strokeWidth,
+            },
+          }));
+          if (remoteStrokeTimeouts.current[data.authorId]) clearTimeout(remoteStrokeTimeouts.current[data.authorId]);
+          remoteStrokeTimeouts.current[data.authorId] = setTimeout(() => {
+            setRemoteStrokes((prev) => {
+              const next = { ...prev };
+              delete next[data.authorId];
+              return next;
+            });
+          }, 2000);
+        }
+      );
+      channel.bind(
+        "drawing-added",
+        (data: { documentId: string; drawing: DrawingItem }) => {
+          if (data.documentId !== documentId || data.drawing.authorId === session?.user?.id) return;
+          setRemoteStrokes((prev) => {
+            const next = { ...prev };
+            delete next[data.drawing.authorId];
+            return next;
+          });
+          setDrawings((prev) =>
+            prev.some((d) => d.id === data.drawing.id) ? prev : [...prev, { ...data.drawing, isMine: false }]
+          );
+        }
+      );
+    },
+    [documentId, page, session?.user?.id]
+  );
+
+  useTeamChannel(teamId, handleChannel);
+
+  const broadcastStrokePreview = useMemo(
+    () =>
+      throttle((points: Point[]) => {
+        if (!teamId) return;
+        fetch(`/api/documents/${documentId}/stroke-preview`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ page, pathData: points, tool, penType, color, strokeWidth }),
+        }).catch(() => {});
+      }, 150),
+    [teamId, documentId, page, tool, penType, color, strokeWidth]
+  );
+
   const pageDrawings = drawings.filter((d) => d.page === page);
 
   const redraw = useCallback(
@@ -166,15 +249,16 @@ export function DrawingCanvas({
       if (!ctx) return;
       ctx.clearRect(0, 0, width, height);
       for (const d of pageDrawings) drawStroke(ctx, d, width, height);
+      for (const stroke of Object.values(remoteStrokes)) drawStroke(ctx, stroke, width, height);
       if (inProgress) drawStroke(ctx, inProgress, width, height);
     },
-    [pageDrawings, width, height]
+    [pageDrawings, remoteStrokes, width, height]
   );
 
   useEffect(() => {
     redraw();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawings, page, width, height]);
+  }, [drawings, remoteStrokes, page, width, height]);
 
   const toFraction = (e: React.PointerEvent<HTMLCanvasElement>): Point => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -207,6 +291,7 @@ export function DrawingCanvas({
       drawingRef.current = [drawingRef.current[0], point];
     }
     redraw({ tool, penType, pathData: drawingRef.current, color, strokeWidth });
+    broadcastStrokePreview(drawingRef.current);
   };
 
   const onPointerUp = async () => {

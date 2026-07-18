@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { documentBlobPath, saveUploadedFile } from "@/lib/storage";
 import { extractPdfText } from "@/lib/pdf";
 import { logActivity } from "@/lib/activity";
+import { requireHost } from "@/lib/host";
+import { notifyTeam } from "@/lib/pusher-server";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
@@ -72,17 +74,15 @@ export async function POST(request: Request) {
 
   let resolvedTeamId: string | null = null;
   if (typeof teamId === "string" && teamId) {
-    const membership = await prisma.teamMember.findUnique({
-      where: { teamId_userId: { teamId, userId: session.user.id } },
-    });
-    if (!membership) {
-      return NextResponse.json({ error: "Not a member of this team." }, { status: 403 });
-    }
-    if (membership.role !== "OWNER") {
+    const gate = await requireHost(teamId);
+    if (!gate) {
       return NextResponse.json(
         { error: "Only the room's host can upload its document." },
         { status: 403 }
       );
+    }
+    if (gate.team.closedAt) {
+      return NextResponse.json({ error: "This room is closed." }, { status: 400 });
     }
     resolvedTeamId = teamId;
   }
@@ -124,6 +124,10 @@ export async function POST(request: Request) {
         actorId: session.user.id,
         action: "DOCUMENT_UPLOADED",
         metadata: { documentId: document.id, title: updated.title },
+      });
+      await notifyTeam(resolvedTeamId, "document-uploaded", {
+        documentId: document.id,
+        title: updated.title,
       });
     }
 

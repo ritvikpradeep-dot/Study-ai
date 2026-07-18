@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { DocumentWorkspace } from "@/components/document-workspace";
 import { AppShell } from "@/components/app-shell";
-import { canAccessDocument } from "@/lib/documents";
+import { canAccessDocument, canEditDocument } from "@/lib/documents";
 
 export default async function DocumentPage({
   params,
@@ -26,6 +26,8 @@ export default async function DocumentPage({
   } else {
     isHost = document.userId === session.user.id;
   }
+
+  const canEdit = await canEditDocument(session.user.id, document);
 
   if (document.status === "processing") {
     return (
@@ -57,6 +59,7 @@ export default async function DocumentPage({
         pageCount={document.pageCount}
         teamId={document.teamId}
         isHost={isHost}
+        canEdit={canEdit}
         sharedSummary={document.summary}
         summaryGeneratedAt={document.summaryGeneratedAt?.toISOString() ?? null}
       />

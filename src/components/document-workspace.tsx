@@ -15,6 +15,7 @@ export function DocumentWorkspace({
   pageCount,
   teamId,
   isHost,
+  canEdit,
   sharedSummary,
   summaryGeneratedAt,
 }: {
@@ -23,6 +24,7 @@ export function DocumentWorkspace({
   pageCount: number | null;
   teamId: string | null;
   isHost: boolean;
+  canEdit: boolean;
   sharedSummary: string | null;
   summaryGeneratedAt: string | null;
 }) {
@@ -74,6 +76,8 @@ export function DocumentWorkspace({
           onToggleFullscreen={() => setFullscreen((v) => !v)}
           onAddToNotes={handleAddToNotes}
           shared={Boolean(teamId)}
+          canEdit={canEdit}
+          teamId={teamId}
         />
       </div>
 
@@ -92,6 +96,7 @@ export function DocumentWorkspace({
               title={title}
               teamId={teamId}
               isHost={isHost}
+              canEdit={canEdit}
               initialSharedSummary={sharedSummary}
               initialSummaryGeneratedAt={summaryGeneratedAt}
             />
