@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { canAccessDocument } from "@/lib/documents";
+import { logActivity } from "@/lib/activity";
 
 export async function GET(
   _request: Request,
@@ -27,6 +28,7 @@ export async function GET(
     return NextResponse.json({
       shared: true,
       notes: notes.map((n) => ({
+        id: n.id,
         authorId: n.user.id,
         authorName: n.user.name || n.user.email,
         content: n.content,
@@ -44,6 +46,7 @@ export async function GET(
     shared: false,
     notes: [
       {
+        id: note?.id ?? null,
         authorId: session.user.id,
         authorName: null,
         content: note?.content ?? "",
@@ -73,11 +76,28 @@ export async function PUT(
     return NextResponse.json({ error: "Note is too long (max 50,000 characters)." }, { status: 400 });
   }
 
+  // Only log the first time this user creates a note on this document — PUT
+  // fires on every autosave, and logging each keystroke-triggered save would
+  // flood the activity feed.
+  const existed = await prisma.note.findUnique({
+    where: { documentId_userId: { documentId: id, userId: session.user.id } },
+    select: { id: true },
+  });
+
   const note = await prisma.note.upsert({
     where: { documentId_userId: { documentId: id, userId: session.user.id } },
     create: { documentId: id, userId: session.user.id, content },
     update: { content },
   });
+
+  if (!existed && document.teamId) {
+    await logActivity({
+      teamId: document.teamId,
+      actorId: session.user.id,
+      action: "NOTE_ADDED",
+      metadata: { documentId: id },
+    });
+  }
 
   return NextResponse.json({ note });
 }

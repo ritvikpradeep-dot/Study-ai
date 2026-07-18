@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { documentBlobPath, saveUploadedFile } from "@/lib/storage";
 import { extractPdfText } from "@/lib/pdf";
+import { logActivity } from "@/lib/activity";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
@@ -116,6 +117,15 @@ export async function POST(request: Request) {
         status: "ready",
       },
     });
+
+    if (resolvedTeamId) {
+      await logActivity({
+        teamId: resolvedTeamId,
+        actorId: session.user.id,
+        action: "DOCUMENT_UPLOADED",
+        metadata: { documentId: document.id, title: updated.title },
+      });
+    }
 
     return NextResponse.json({ document: updated });
   } catch (err) {

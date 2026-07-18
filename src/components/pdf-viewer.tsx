@@ -22,6 +22,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DrawingCanvas } from "@/components/drawing-canvas";
 import { StickyNoteLayer, type StickyNoteLayerHandle } from "@/components/sticky-note-layer";
+import { ReactionBar, type ReactionItem } from "@/components/reaction-bar";
 
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
@@ -89,6 +90,7 @@ export function PdfViewer({
   const [loaded, setLoaded] = useState(false);
 
   const [highlights, setHighlights] = useState<HighlightItem[]>([]);
+  const [reactions, setReactions] = useState<ReactionItem[]>([]);
   const [selection, setSelection] = useState<{
     text: string;
     x: number;
@@ -114,7 +116,29 @@ export function PdfViewer({
       .then((r) => r.json())
       .then((data) => setHighlights(data.highlights ?? []))
       .catch(() => setHighlights([]));
+    fetch(`/api/documents/${documentId}/reactions`)
+      .then((r) => r.json())
+      .then((data) => setReactions(data.reactions ?? []))
+      .catch(() => setReactions([]));
   }, [documentId]);
+
+  const toggleReaction = async (targetId: string, emoji: string) => {
+    setReactions((prev) => {
+      const mine = prev.find(
+        (r) => r.targetType === "HIGHLIGHT" && r.targetId === targetId && r.emoji === emoji && r.isMine
+      );
+      if (mine) return prev.filter((r) => r !== mine);
+      return [
+        ...prev,
+        { targetType: "HIGHLIGHT" as const, targetId, emoji, authorId: "me", authorName: "You", isMine: true },
+      ];
+    });
+    await fetch("/api/reactions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targetType: "HIGHLIGHT", targetId, emoji }),
+    }).catch(() => {});
+  };
 
   const pageHighlights = highlights.filter((h) => h.page === currentPage);
 
@@ -413,9 +437,9 @@ export function PdfViewer({
           </div>
 
           {pageHighlights.length > 0 && (
-            <div className="glass flex max-h-24 flex-wrap gap-1.5 overflow-y-auto rounded-2xl p-2">
+            <div className="glass flex max-h-32 flex-wrap gap-1.5 overflow-y-auto rounded-2xl p-2">
               {pageHighlights.map((h) => (
-                <span
+                <div
                   key={h.id}
                   className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs"
                   style={{ backgroundColor: `${h.color}22`, color: h.color }}
@@ -431,7 +455,11 @@ export function PdfViewer({
                       <X size={11} />
                     </button>
                   )}
-                </span>
+                  <ReactionBar
+                    reactions={reactions.filter((r) => r.targetType === "HIGHLIGHT" && r.targetId === h.id)}
+                    onToggle={(emoji) => toggleReaction(h.id, emoji)}
+                  />
+                </div>
               ))}
             </div>
           )}

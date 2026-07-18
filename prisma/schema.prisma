@@ -29,11 +29,14 @@ model User {
   ownedTeams    Team[]        @relation("TeamOwner")
   teamMembers   TeamMember[]
   aiUsageLogs   AiUsageLog[]
-  notes         Note[]
-  highlights    Highlight[]
-  drawings      Drawing[]
-  stickyNotes   StickyNote[]
-  roomMessages  RoomMessage[]
+  notes             Note[]
+  highlights        Highlight[]
+  drawings          Drawing[]
+  stickyNotes       StickyNote[]
+  roomMessages      RoomMessage[]
+  reactions         Reaction[]
+  activityLogEntries ActivityLogEntry[]
+  pomodoroSessionsStarted PomodoroSession[]
 }
 
 model Account {
@@ -196,6 +199,73 @@ model StickyNote {
   author   User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
 }
 
+enum ReactionTargetType {
+  NOTE
+  HIGHLIGHT
+}
+
+// No DB relation to Note/Highlight — a reaction can target either, and
+// Prisma has no polymorphic-relation support, so targetId is a plain
+// pointer. Callers that delete a Note/Highlight are responsible for also
+// deleting its Reactions (see the highlight DELETE route).
+model Reaction {
+  id         String             @id @default(cuid())
+  targetType ReactionTargetType
+  targetId   String
+  authorId   String
+  emoji      String
+  createdAt  DateTime           @default(now())
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@unique([targetType, targetId, authorId, emoji])
+}
+
+enum ActivityAction {
+  DOCUMENT_UPLOADED
+  NOTE_ADDED
+  HIGHLIGHT_ADDED
+  MEMBER_JOINED
+  POMODORO_STARTED
+}
+
+model ActivityLogEntry {
+  id        String         @id @default(cuid())
+  teamId    String
+  actorId   String
+  action    ActivityAction
+  metadata  Json?
+  createdAt DateTime       @default(now())
+
+  team  Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  actor User @relation(fields: [actorId], references: [id], onDelete: Cascade)
+}
+
+enum PomodoroPhase {
+  FOCUS
+  BREAK
+}
+
+// One row per room holding the current timer state; clients compute the
+// live countdown from phaseStartedAt between polls rather than the server
+// pushing per-second ticks.
+model PomodoroSession {
+  id                   String        @id @default(cuid())
+  teamId               String        @unique
+  startedById          String
+  focusMinutes         Int           @default(25)
+  breakMinutes         Int           @default(5)
+  currentPhase         PomodoroPhase @default(FOCUS)
+  currentSessionNumber Int           @default(1)
+  totalSessions        Int           @default(4)
+  phaseStartedAt        DateTime     @default(now())
+  isRunning             Boolean      @default(true)
+  updatedAt             DateTime     @updatedAt
+
+  team      Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  startedBy User @relation(fields: [startedById], references: [id], onDelete: Cascade)
+}
+
 enum TeamRole {
   OWNER
   MEMBER
@@ -208,10 +278,12 @@ model Team {
   inviteCode String   @unique
   createdAt  DateTime @default(now())
 
-  owner     User         @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  members   TeamMember[]
-  documents Document[]
-  messages  RoomMessage[]
+  owner            User              @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members          TeamMember[]
+  documents        Document[]
+  messages         RoomMessage[]
+  activityLog      ActivityLogEntry[]
+  pomodoroSession  PomodoroSession?
 }
 
 // The room's human group chat — distinct from ChatMessage, which is the

@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { UploadDropzone } from "@/components/upload-dropzone";
 import { RoomChat } from "@/components/room-chat";
+import { PomodoroTimer } from "@/components/pomodoro-timer";
+import { ActivityFeed } from "@/components/activity-feed";
 import { useToast } from "@/components/ui/toast";
 import { MAX_TEAM_MEMBERS } from "@/lib/teams";
 
@@ -142,6 +144,9 @@ export function TeamWorkspace({
         </div>
 
         <div className="flex flex-col gap-6">
+          <PomodoroTimer teamId={team.id} isHost={team.myRole === "OWNER"} />
+          <ActivityFeed teamId={team.id} />
+
           <Card className="p-5">
             <h2 className="mb-3 font-medium">Invite people</h2>
             <p className="mb-3 text-xs opacity-60">Share this code — anyone with it can join the team.</p>

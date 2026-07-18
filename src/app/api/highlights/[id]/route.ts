@@ -15,6 +15,9 @@ export async function DELETE(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  // Reaction has no DB relation to Highlight (polymorphic target), so its
+  // rows for this highlight aren't cascade-deleted automatically.
+  await prisma.reaction.deleteMany({ where: { targetType: "HIGHLIGHT", targetId: id } });
   await prisma.highlight.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }

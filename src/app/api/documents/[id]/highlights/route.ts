@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { canAccessDocument } from "@/lib/documents";
 import { colorForAuthor } from "@/lib/annotation-colors";
+import { logActivity } from "@/lib/activity";
 
 export async function GET(
   _request: Request,
@@ -73,6 +74,15 @@ export async function POST(
       color: colorForAuthor(session.user.id),
     },
   });
+
+  if (document.teamId) {
+    await logActivity({
+      teamId: document.teamId,
+      actorId: session.user.id,
+      action: "HIGHLIGHT_ADDED",
+      metadata: { documentId: id, page },
+    });
+  }
 
   return NextResponse.json({ highlight });
 }

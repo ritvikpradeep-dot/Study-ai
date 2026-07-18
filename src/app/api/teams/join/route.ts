@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { MAX_TEAM_MEMBERS } from "@/lib/teams";
+import { logActivity } from "@/lib/activity";
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -52,6 +53,8 @@ export async function POST(request: Request) {
     }
     throw err;
   }
+
+  await logActivity({ teamId: team.id, actorId: session.user.id, action: "MEMBER_JOINED" });
 
   return NextResponse.json({ team: { id: team.id, name: team.name } });
 }
