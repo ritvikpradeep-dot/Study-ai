@@ -57,14 +57,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // promotions and deactivations take effect without forcing a re-login.
       const dbUser = await prisma.user.findUnique({
         where: { id: userId },
-        select: { role: true, isActive: true },
+        select: { role: true, isActive: true, interfacePreference: true },
       });
       if (!dbUser || !dbUser.isActive) {
         token.userId = undefined;
         token.role = undefined;
+        token.interfacePreference = undefined;
         return token;
       }
       token.role = dbUser.role;
+      token.interfacePreference = dbUser.interfacePreference ?? undefined;
       return token;
     },
     async session({ session, token }) {
@@ -77,6 +79,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (session.user) {
         session.user.id = userId;
         session.user.role = (token.role as "USER" | "ADMIN" | undefined) ?? "USER";
+        session.user.interfacePreference =
+          (token.interfacePreference as "MOBILE" | "DESKTOP" | undefined) ?? null;
       }
       return session;
     },

@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
-import { Moon, Sun, Monitor, Palette } from "lucide-react";
+import { Moon, Sun, Monitor, Palette, Smartphone } from "lucide-react";
+import { useInterfaceMode } from "@/lib/interface-mode";
 
 const ACCENTS: { name: string; value: string }[] = [
   { name: "Indigo", value: "#4f46e5" },
@@ -16,6 +17,7 @@ const ACCENT_STORAGE_KEY = "studyai:accent";
 
 export function AppearanceMenu() {
   const { theme, setTheme } = useTheme();
+  const { mode, setMode } = useInterfaceMode();
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [accent, setAccent] = useState(ACCENTS[0].value);
@@ -94,6 +96,31 @@ export function AppearanceMenu() {
               />
             ))}
           </div>
+
+          {mode && (
+            <>
+              <p className="mb-2 mt-3 px-1 text-xs font-medium uppercase tracking-wide opacity-60">
+                Layout
+              </p>
+              <div className="flex gap-1 rounded-xl bg-black/5 dark:bg-white/10 p-1">
+                {[
+                  { value: "mobile" as const, icon: Smartphone, label: "Mobile" },
+                  { value: "desktop" as const, icon: Monitor, label: "Desktop" },
+                ].map(({ value, icon: Icon, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => setMode(value)}
+                    aria-label={label}
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs transition ${
+                      mode === value ? "bg-white dark:bg-black shadow" : "opacity-60"
+                    }`}
+                  >
+                    <Icon size={14} /> {label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

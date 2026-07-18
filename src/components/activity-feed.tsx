@@ -120,7 +120,7 @@ export function ActivityFeed({ teamId }: { teamId: string }) {
           ) : (
             rows.map((r) => (
               <div key={r.key} className="flex items-start justify-between gap-2 text-xs">
-                <span className="opacity-80">{r.message}</span>
+                <span className="min-w-0 opacity-80">{r.message}</span>
                 <span className="shrink-0 opacity-50">{relativeTime(r.createdAt)}</span>
               </div>
             ))

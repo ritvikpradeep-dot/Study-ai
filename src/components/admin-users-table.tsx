@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { useInterfaceMode } from "@/lib/interface-mode";
 
 type AdminUser = {
   id: string;
@@ -26,6 +27,7 @@ export function AdminUsersTable({
   const [users, setUsers] = useState(initialUsers);
   const [busyId, setBusyId] = useState<string | null>(null);
   const toast = useToast();
+  const { mode } = useInterfaceMode();
 
   async function patchUser(id: string, data: Record<string, unknown>) {
     setBusyId(id);
@@ -68,6 +70,68 @@ export function AdminUsersTable({
     } finally {
       setBusyId(null);
     }
+  }
+
+  if (mode === "mobile") {
+    return (
+      <div className="flex flex-col gap-3">
+        {users.map((u) => (
+          <Card key={u.id} className="p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate font-medium">{u.name || "—"}</p>
+                <p className="truncate text-xs opacity-60">{u.email}</p>
+              </div>
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                <Badge tone={u.role === "ADMIN" ? "accent" : "neutral"}>{u.role}</Badge>
+                <Badge tone={u.isActive ? "success" : "danger"}>{u.isActive ? "active" : "deactivated"}</Badge>
+              </div>
+            </div>
+            <dl className="mt-3 grid grid-cols-2 gap-y-1.5 text-xs">
+              <dt className="opacity-60">Activity</dt>
+              <dd className="text-right">
+                {u._count.documents} docs · {u._count.ownedTeams} owned · {u._count.teamMembers} member of
+              </dd>
+              <dt className="opacity-60">Joined</dt>
+              <dd className="text-right">{new Date(u.createdAt).toLocaleDateString()}</dd>
+            </dl>
+            {u.id === currentUserId ? (
+              <p className="mt-3 text-xs opacity-50">This is you</p>
+            ) : (
+              <div className="mt-3 flex flex-col gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="min-h-[44px]"
+                  disabled={busyId === u.id}
+                  onClick={() => patchUser(u.id, { isActive: !u.isActive })}
+                >
+                  {u.isActive ? "Deactivate" : "Reactivate"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="min-h-[44px]"
+                  disabled={busyId === u.id}
+                  onClick={() => patchUser(u.id, { role: u.role === "ADMIN" ? "USER" : "ADMIN" })}
+                >
+                  {u.role === "ADMIN" ? "Revoke admin" : "Make admin"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  className="min-h-[44px]"
+                  disabled={busyId === u.id}
+                  onClick={() => removeUser(u.id, u.email)}
+                >
+                  Remove
+                </Button>
+              </div>
+            )}
+          </Card>
+        ))}
+      </div>
+    );
   }
 
   return (

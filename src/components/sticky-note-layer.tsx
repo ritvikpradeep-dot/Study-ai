@@ -8,8 +8,9 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { X } from "lucide-react";
+import { X, StickyNote as StickyNoteIcon } from "lucide-react";
 import { colorForAuthor } from "@/lib/annotation-colors";
+import { useInterfaceMode } from "@/lib/interface-mode";
 
 type StickyNoteItem = {
   id: string;
@@ -51,8 +52,11 @@ export const StickyNoteLayer = forwardRef<
 >(function StickyNoteLayer({ documentId, page, width, height, shared, placing, onPlaced }, ref) {
   const [notes, setNotes] = useState<StickyNoteItem[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const dragState = useRef<{ id: string; startX: number; startY: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { mode } = useInterfaceMode();
+  const isMobile = mode === "mobile";
 
   useEffect(() => {
     fetch(`/api/documents/${documentId}/sticky-notes`)
@@ -87,10 +91,11 @@ export const StickyNoteLayer = forwardRef<
           },
         ]);
         setEditingId(data.stickyNote.id);
+        if (isMobile) setExpandedId(data.stickyNote.id);
       }
       onPlaced?.();
     },
-    [documentId, page, onPlaced]
+    [documentId, page, onPlaced, isMobile]
   );
 
   useImperativeHandle(ref, () => ({
@@ -160,6 +165,29 @@ export const StickyNoteLayer = forwardRef<
       {pageNotes.map((note) => {
         const rotation = rotationForId(note.id);
         const editing = editingId === note.id;
+
+        if (isMobile) {
+          return (
+            <button
+              key={note.id}
+              onPointerDown={(e) => onNoteDragStart(e, note)}
+              onPointerMove={(e) => onNoteDragMove(e, note)}
+              onPointerUp={() => onNoteDragEnd(note)}
+              onClick={() => setExpandedId(note.id)}
+              aria-label={note.content ? `Sticky note: ${note.content}` : "Empty sticky note"}
+              className="absolute flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-white shadow-md"
+              style={{
+                left: note.x * width,
+                top: note.y * height,
+                backgroundColor: note.color || colorForAuthor(note.authorId),
+                pointerEvents: "auto",
+              }}
+            >
+              <StickyNoteIcon size={18} />
+            </button>
+          );
+        }
+
         return (
           <div
             key={note.id}
@@ -220,6 +248,65 @@ export const StickyNoteLayer = forwardRef<
           </div>
         );
       })}
+
+      {isMobile && expandedId && (() => {
+        const note = pageNotes.find((n) => n.id === expandedId);
+        if (!note) return null;
+        return (
+          <div
+            className="safe-bottom fixed inset-x-0 bottom-0 z-50 rounded-t-2xl p-4 shadow-xl"
+            style={{ backgroundColor: "#FAEEDA", color: "#7a5230", pointerEvents: "auto" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center justify-between">
+              {shared && (
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-medium text-white"
+                    style={{ backgroundColor: note.color || colorForAuthor(note.authorId) }}
+                  >
+                    {note.authorName?.[0]?.toUpperCase() ?? "?"}
+                  </span>
+                  <span className="text-xs opacity-70">{note.authorName}</span>
+                </div>
+              )}
+              <div className="ml-auto flex items-center gap-1">
+                {note.isMine && (
+                  <button
+                    onClick={() => {
+                      remove(note.id);
+                      setExpandedId(null);
+                    }}
+                    aria-label="Remove sticky note"
+                    className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-black/10"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+                <button
+                  onClick={() => setExpandedId(null)}
+                  aria-label="Close"
+                  className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-black/10"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+            {note.isMine ? (
+              <textarea
+                autoFocus
+                value={note.content}
+                onChange={(e) => updateContent(note.id, e.target.value)}
+                className="w-full resize-none bg-transparent text-sm leading-snug outline-none"
+                rows={4}
+                placeholder="Type a note…"
+              />
+            ) : (
+              <p className="whitespace-pre-wrap break-words text-sm leading-snug">{note.content}</p>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 });

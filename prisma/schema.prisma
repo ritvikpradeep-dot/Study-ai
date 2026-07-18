@@ -13,16 +13,22 @@ enum Role {
   ADMIN
 }
 
+enum InterfacePreference {
+  MOBILE
+  DESKTOP
+}
+
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  image         String?
-  passwordHash  String?
-  role          Role      @default(USER)
-  isActive      Boolean   @default(true)
-  createdAt     DateTime  @default(now())
+  id                   String               @id @default(cuid())
+  name                 String?
+  email                String               @unique
+  emailVerified        DateTime?
+  image                String?
+  passwordHash         String?
+  role                 Role                 @default(USER)
+  isActive             Boolean              @default(true)
+  interfacePreference  InterfacePreference?
+  createdAt            DateTime             @default(now())
 
   accounts     Account[]
   sessions     Session[]

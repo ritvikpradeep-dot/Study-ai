@@ -140,6 +140,8 @@ export function DrawingCanvas({
   height,
   active,
   teamId = null,
+  onPinchZoom,
+  onPan,
 }: {
   documentId: string;
   page: number;
@@ -147,6 +149,8 @@ export function DrawingCanvas({
   height: number;
   active: boolean;
   teamId?: string | null;
+  onPinchZoom?: (scaleFactor: number) => void;
+  onPan?: (dx: number, dy: number) => void;
 }) {
   const { data: session } = useSession();
   const [drawings, setDrawings] = useState<DrawingItem[]>([]);
@@ -163,6 +167,10 @@ export function DrawingCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef<Point[] | null>(null);
   const isPointerDown = useRef(false);
+  // Tracks concurrently-down pointers so two-finger touch is treated as
+  // pinch-zoom/pan instead of drawing a stroke.
+  const activePointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinchState = useRef<{ distance: number; midX: number; midY: number } | null>(null);
 
   useEffect(() => {
     fetch(`/api/documents/${documentId}/drawings`)
@@ -332,6 +340,46 @@ export function DrawingCanvas({
 
   const isEraser = tool === "ERASER";
 
+  function pinchMetrics(map: Map<number, { x: number; y: number }>) {
+    const [a, b] = Array.from(map.values());
+    return { distance: Math.hypot(b.x - a.x, b.y - a.y), midX: (a.x + b.x) / 2, midY: (a.y + b.y) / 2 };
+  }
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (activePointers.current.size >= 2) {
+      // A second finger landed mid-stroke: abandon the stroke and switch to pinch/pan.
+      isPointerDown.current = false;
+      drawingRef.current = null;
+      redraw();
+      pinchState.current = pinchMetrics(activePointers.current);
+      return;
+    }
+    onPointerDown(e);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (activePointers.current.has(e.pointerId)) {
+      activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+    if (activePointers.current.size >= 2 && pinchState.current) {
+      const next = pinchMetrics(activePointers.current);
+      if (onPinchZoom && pinchState.current.distance > 0) {
+        onPinchZoom(next.distance / pinchState.current.distance);
+      }
+      onPan?.(next.midX - pinchState.current.midX, next.midY - pinchState.current.midY);
+      pinchState.current = next;
+      return;
+    }
+    onPointerMove(e);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    activePointers.current.delete(e.pointerId);
+    if (activePointers.current.size < 2) pinchState.current = null;
+    if (activePointers.current.size === 0) onPointerUp();
+  };
+
   const onEraserClick = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!active || !isEraser) return;
     const point = toFraction(e);
@@ -350,10 +398,11 @@ export function DrawingCanvas({
           pointerEvents: active ? "auto" : "none",
           cursor: active ? (isEraser ? "cell" : "crosshair") : "default",
         }}
-        onPointerDown={isEraser ? undefined : onPointerDown}
-        onPointerMove={isEraser ? undefined : onPointerMove}
-        onPointerUp={isEraser ? undefined : onPointerUp}
-        onClick={onEraserClick}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onClick={isEraser ? onEraserClick : undefined}
       />
       {active && (
         <div className="glass absolute left-2 top-2 z-10 flex flex-col gap-1.5 rounded-xl p-1.5 shadow-lg">
@@ -365,7 +414,7 @@ export function DrawingCanvas({
                   key={t.value}
                   onClick={() => setTool(t.value)}
                   title={t.label}
-                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition ${
                     tool === t.value ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
                   }`}
                 >
@@ -376,7 +425,7 @@ export function DrawingCanvas({
             <button
               onClick={() => setTool("ERASER")}
               title="Eraser"
-              className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+              className={`flex h-11 w-11 items-center justify-center rounded-lg transition ${
                 isEraser ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
               }`}
             >

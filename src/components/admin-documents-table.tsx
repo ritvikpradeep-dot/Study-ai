@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { useInterfaceMode } from "@/lib/interface-mode";
 
 type AdminDocument = {
   id: string;
@@ -34,6 +35,7 @@ export function AdminDocumentsTable({ initialDocuments }: { initialDocuments: Ad
   const [documents, setDocuments] = useState(initialDocuments);
   const [busyId, setBusyId] = useState<string | null>(null);
   const toast = useToast();
+  const { mode } = useInterfaceMode();
 
   async function removeDocument(id: string, title: string) {
     if (!confirm(`Permanently delete "${title}"? This also deletes its chat, quizzes, and attempts.`)) {
@@ -54,6 +56,48 @@ export function AdminDocumentsTable({ initialDocuments }: { initialDocuments: Ad
     } finally {
       setBusyId(null);
     }
+  }
+
+  if (mode === "mobile") {
+    return (
+      <div className="flex flex-col gap-3">
+        {documents.map((d) => (
+          <Card key={d.id} className="p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate font-medium">{d.title}</p>
+                <p className="text-xs opacity-60">
+                  {formatBytes(d.fileSize)}
+                  {d.pageCount ? ` · ${d.pageCount}p` : ""}
+                </p>
+              </div>
+              <Badge tone={STATUS_TONE[d.status] ?? "neutral"}>{d.status}</Badge>
+            </div>
+            <dl className="mt-3 grid grid-cols-2 gap-y-1.5 text-xs">
+              <dt className="opacity-60">Owner</dt>
+              <dd className="text-right">{d.user.name || d.user.email}</dd>
+              <dt className="opacity-60">Team</dt>
+              <dd className="text-right">{d.team ? d.team.name : "Personal"}</dd>
+              <dt className="opacity-60">Activity</dt>
+              <dd className="text-right">
+                {d._count.quizzes} quizzes · {d._count.messages} messages
+              </dd>
+              <dt className="opacity-60">Uploaded</dt>
+              <dd className="text-right">{new Date(d.createdAt).toLocaleDateString()}</dd>
+            </dl>
+            <Button
+              size="sm"
+              variant="danger"
+              className="mt-3 min-h-[44px] w-full"
+              disabled={busyId === d.id}
+              onClick={() => removeDocument(d.id, d.title)}
+            >
+              Delete
+            </Button>
+          </Card>
+        ))}
+      </div>
+    );
   }
 
   return (

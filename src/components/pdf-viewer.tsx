@@ -62,7 +62,7 @@ function IconButton({
         onClick={onClick}
         disabled={disabled}
         aria-label={label}
-        className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-black/5 disabled:opacity-30 dark:hover:bg-white/10"
+        className="flex h-11 w-11 items-center justify-center rounded-lg transition hover:bg-black/5 disabled:opacity-30 dark:hover:bg-white/10"
       >
         {children}
       </button>
@@ -384,7 +384,7 @@ export function PdfViewer({
                   setStickyMode(false);
                 }}
                 aria-label={drawMode ? "Stop drawing" : "Draw on page"}
-                className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+                className={`flex h-11 w-11 items-center justify-center rounded-lg transition ${
                   drawMode ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
                 }`}
               >
@@ -399,7 +399,7 @@ export function PdfViewer({
                   setDrawMode(false);
                 }}
                 aria-label={stickyMode ? "Cancel sticky note" : "Place a sticky note"}
-                className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+                className={`flex h-11 w-11 items-center justify-center rounded-lg transition ${
                   stickyMode ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
                 }`}
               >
@@ -419,7 +419,7 @@ export function PdfViewer({
         )}
       </div>
 
-      <div className="flex flex-1 gap-3 overflow-hidden">
+      <div className="flex min-w-0 flex-1 gap-3 overflow-hidden">
         {showThumbnails && (
           <div className="glass w-28 shrink-0 overflow-y-auto rounded-2xl p-2">
             <Document file={fileUrl} loading={null}>
@@ -509,6 +509,16 @@ export function PdfViewer({
                         height={pageDimensions.height}
                         active={drawMode}
                         teamId={teamId}
+                        onPinchZoom={(factor) =>
+                          setScale((s) => Math.min(3, Math.max(0.5, s * factor)))
+                        }
+                        onPan={(dx, dy) => {
+                          const el = containerRef.current;
+                          if (el) {
+                            el.scrollLeft -= dx;
+                            el.scrollTop -= dy;
+                          }
+                        }}
                       />
                       <StickyNoteLayer
                         ref={stickyNoteLayerRef}

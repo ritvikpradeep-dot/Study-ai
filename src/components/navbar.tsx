@@ -10,7 +10,7 @@ export function Navbar() {
   const { data: session, status } = useSession();
 
   return (
-    <header className="glass sticky top-0 z-40 flex items-center justify-between px-6 py-3">
+    <header className="safe-top glass sticky top-0 z-40 flex items-center justify-between px-6 py-3">
       <Link
         href={session ? "/dashboard" : "/"}
         className="flex items-center gap-2 font-semibold tracking-tight"
