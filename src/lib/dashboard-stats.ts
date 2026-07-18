@@ -53,7 +53,11 @@ export function computeActivityByDay(
 }
 
 export function isWithinLastDays(date: Date, days: number): boolean {
+  return date >= daysAgo(days);
+}
+
+export function daysAgo(days: number): Date {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
-  return date >= cutoff;
+  return cutoff;
 }

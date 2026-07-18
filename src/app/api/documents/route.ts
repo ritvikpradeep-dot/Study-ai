@@ -77,6 +77,12 @@ export async function POST(request: Request) {
     if (!membership) {
       return NextResponse.json({ error: "Not a member of this team." }, { status: 403 });
     }
+    if (membership.role !== "OWNER") {
+      return NextResponse.json(
+        { error: "Only the room's host can upload its document." },
+        { status: 403 }
+      );
+    }
     resolvedTeamId = teamId;
   }
 

@@ -17,6 +17,16 @@ export default async function DocumentPage({
   const document = await prisma.document.findUnique({ where: { id } });
   if (!document || !(await canAccessDocument(session.user.id, document))) notFound();
 
+  let isHost = false;
+  if (document.teamId) {
+    const membership = await prisma.teamMember.findUnique({
+      where: { teamId_userId: { teamId: document.teamId, userId: session.user.id } },
+    });
+    isHost = membership?.role === "OWNER";
+  } else {
+    isHost = document.userId === session.user.id;
+  }
+
   if (document.status === "processing") {
     return (
       <AppShell>
@@ -45,6 +55,10 @@ export default async function DocumentPage({
         documentId={document.id}
         title={document.title}
         pageCount={document.pageCount}
+        teamId={document.teamId}
+        isHost={isHost}
+        sharedSummary={document.summary}
+        summaryGeneratedAt={document.summaryGeneratedAt?.toISOString() ?? null}
       />
     </AppShell>
   );

@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { AppShell } from "@/components/app-shell";
 import { TeamsList } from "@/components/teams-list";
+import { MAX_TEAM_MEMBERS } from "@/lib/teams";
 
 export default async function TeamsPage() {
   const session = await auth();
@@ -23,6 +24,7 @@ export default async function TeamsPage() {
     name: m.team.name,
     myRole: m.role,
     memberCount: m.team._count.members,
+    maxMembers: MAX_TEAM_MEMBERS,
     documentCount: m.team._count.documents,
   }));
 

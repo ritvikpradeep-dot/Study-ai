@@ -8,7 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { UploadDropzone } from "@/components/upload-dropzone";
+import { RoomChat } from "@/components/room-chat";
 import { useToast } from "@/components/ui/toast";
+import { MAX_TEAM_MEMBERS } from "@/lib/teams";
 
 type Member = { id: string; name: string | null; email: string; role: "OWNER" | "MEMBER" };
 type TeamDocument = {
@@ -84,23 +86,29 @@ export function TeamWorkspace({
             {team.name}
           </h1>
           <p className="mt-1 text-sm opacity-70">
-            {team.members.length} member{team.members.length === 1 ? "" : "s"} ·{" "}
+            {team.members.length}/{MAX_TEAM_MEMBERS} members ·{" "}
             {documents.length} shared document{documents.length === 1 ? "" : "s"}
           </p>
         </div>
         {team.myRole !== "OWNER" && (
           <Button variant="secondary" size="sm" onClick={leaveTeam} disabled={leaving}>
-            <LogOut size={14} /> Leave team
+            <LogOut size={14} /> Leave room
           </Button>
         )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="flex flex-col gap-6 lg:col-span-2">
-          <div>
-            <h2 className="mb-3 text-lg font-medium">Upload to this team</h2>
-            <UploadDropzone teamId={team.id} onUploaded={() => router.refresh()} />
-          </div>
+          {team.myRole === "OWNER" ? (
+            <div>
+              <h2 className="mb-3 text-lg font-medium">Upload to this room</h2>
+              <UploadDropzone teamId={team.id} onUploaded={() => router.refresh()} />
+            </div>
+          ) : documents.length === 0 ? (
+            <p className="text-sm opacity-60">
+              Only the host can upload this room&apos;s document — nothing uploaded yet.
+            </p>
+          ) : null}
 
           <div>
             <h2 className="mb-3 text-lg font-medium">Team documents</h2>
@@ -155,12 +163,14 @@ export function TeamWorkspace({
                     <p className="truncate">{m.name || m.email}</p>
                   </div>
                   <Badge tone={m.role === "OWNER" ? "accent" : "neutral"}>
-                    {m.role === "OWNER" ? "Owner" : "Member"}
+                    {m.role === "OWNER" ? "Host" : "Member"}
                   </Badge>
                 </div>
               ))}
             </div>
           </Card>
+
+          <RoomChat teamId={team.id} />
         </div>
       </div>
     </div>

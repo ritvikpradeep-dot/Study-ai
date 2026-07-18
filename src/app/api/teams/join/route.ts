@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { MAX_TEAM_MEMBERS } from "@/lib/teams";
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -10,7 +11,10 @@ export async function POST(request: Request) {
   const inviteCode = typeof body.inviteCode === "string" ? body.inviteCode.trim() : "";
   if (!inviteCode) return NextResponse.json({ error: "Invite code is required." }, { status: 400 });
 
-  const team = await prisma.team.findUnique({ where: { inviteCode } });
+  const team = await prisma.team.findUnique({
+    where: { inviteCode },
+    include: { _count: { select: { members: true } } },
+  });
   if (!team) return NextResponse.json({ error: "Invalid invite code." }, { status: 404 });
 
   const existing = await prisma.teamMember.findUnique({
@@ -20,9 +24,34 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "You're already a member of this team." }, { status: 400 });
   }
 
-  await prisma.teamMember.create({
-    data: { teamId: team.id, userId: session.user.id, role: "MEMBER" },
-  });
+  if (team._count.members >= MAX_TEAM_MEMBERS) {
+    return NextResponse.json(
+      { error: `This room is full (max ${MAX_TEAM_MEMBERS} members).` },
+      { status: 409 }
+    );
+  }
+
+  // Re-check the cap inside a transaction to close the race where two joins
+  // land between the count check above and the insert.
+  try {
+    await prisma.$transaction(async (tx) => {
+      const count = await tx.teamMember.count({ where: { teamId: team.id } });
+      if (count >= MAX_TEAM_MEMBERS) {
+        throw new Error("ROOM_FULL");
+      }
+      await tx.teamMember.create({
+        data: { teamId: team.id, userId: session.user.id, role: "MEMBER" },
+      });
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message === "ROOM_FULL") {
+      return NextResponse.json(
+        { error: `This room is full (max ${MAX_TEAM_MEMBERS} members).` },
+        { status: 409 }
+      );
+    }
+    throw err;
+  }
 
   return NextResponse.json({ team: { id: team.id, name: team.name } });
 }

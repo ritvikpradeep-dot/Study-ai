@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, FileText, ShieldAlert } from "lucide-react";
+import { LayoutDashboard, Users, FileText, UsersRound, ShieldAlert } from "lucide-react";
 
 const TABS = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/admin/users", label: "Users", icon: Users, exact: false },
+  { href: "/admin/rooms", label: "Rooms", icon: UsersRound, exact: false },
   { href: "/admin/documents", label: "Documents", icon: FileText, exact: false },
 ];
 

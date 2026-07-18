@@ -1,13 +1,24 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
-import { computeActivityByDay, isWithinLastDays } from "@/lib/dashboard-stats";
+import { computeActivityByDay, isWithinLastDays, daysAgo } from "@/lib/dashboard-stats";
 
 export async function GET() {
   const session = await requireAdmin();
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const [totalUsers, activeUsers, totalDocuments, totalTeams, usageLogs] = await Promise.all([
+  const sevenDaysAgo = daysAgo(7);
+
+  const [
+    totalUsers,
+    activeUsers,
+    totalDocuments,
+    totalTeams,
+    usageLogs,
+    recentRoomMessages,
+    recentTeamDocuments,
+    soloActivityCount,
+  ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { isActive: true } }),
     prisma.document.count(),
@@ -15,7 +26,23 @@ export async function GET() {
     prisma.aiUsageLog.findMany({
       select: { feature: true, userId: true, promptTokens: true, completionTokens: true, createdAt: true },
     }),
+    prisma.roomMessage.findMany({ where: { createdAt: { gte: sevenDaysAgo } }, select: { teamId: true } }),
+    prisma.document.findMany({
+      where: { teamId: { not: null }, createdAt: { gte: sevenDaysAgo } },
+      select: { teamId: true },
+    }),
+    prisma.document.count({
+      where: {
+        teamId: null,
+        OR: [{ notes: { some: {} } }, { highlights: { some: {} } }, { drawings: { some: {} } }],
+      },
+    }),
   ]);
+
+  const activeRooms = new Set([
+    ...recentRoomMessages.map((m) => m.teamId),
+    ...recentTeamDocuments.map((d) => d.teamId as string),
+  ]).size;
 
   const usersActiveLast7Days = new Set(
     usageLogs.filter((l) => isWithinLastDays(l.createdAt, 7)).map((l) => l.userId)
@@ -45,6 +72,8 @@ export async function GET() {
     usersActiveLast7Days,
     totalDocuments,
     totalTeams,
+    activeRooms,
+    soloActivityCount,
     documentsSummarizedByDay,
     tokensByFeature,
     totalCallsLogged,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Document, Page, Thumbnail, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -13,11 +13,26 @@ import {
   PanelLeft,
   Maximize,
   Minimize,
+  Highlighter,
+  StickyNote,
+  X,
+  Pencil,
 } from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DrawingCanvas } from "@/components/drawing-canvas";
 
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+
+type HighlightItem = {
+  id: string;
+  page: number;
+  textSnippet: string;
+  color: string;
+  authorId: string;
+  authorName: string;
+  isMine: boolean;
+};
 
 function IconButton({
   onClick,
@@ -44,16 +59,24 @@ function IconButton({
   );
 }
 
+// Escape a snippet for use inside a RegExp, matching the same approach as
+// the existing search-highlight mechanism below.
+function escapeRegExp(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export function PdfViewer({
   documentId,
   pageCount,
   fullscreen = false,
   onToggleFullscreen,
+  onAddToNotes,
 }: {
   documentId: string;
   pageCount: number | null;
   fullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  onAddToNotes?: (text: string, page: number) => void;
 }) {
   const [numPages, setNumPages] = useState<number>(pageCount ?? 0);
   const [currentPage, setCurrentPage] = useState(1);
@@ -62,16 +85,106 @@ export function PdfViewer({
   const [showThumbnails, setShowThumbnails] = useState(true);
   const [loaded, setLoaded] = useState(false);
 
+  const [highlights, setHighlights] = useState<HighlightItem[]>([]);
+  const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null);
+  const [drawMode, setDrawMode] = useState(false);
+  const [pageDimensions, setPageDimensions] = useState({ width: 0, height: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
+
   const fileUrl = useMemo(() => `/api/documents/${documentId}/file`, [documentId]);
 
   useEffect(() => {
     setCurrentPage(1);
   }, [documentId]);
 
+  useEffect(() => {
+    fetch(`/api/documents/${documentId}/highlights`)
+      .then((r) => r.json())
+      .then((data) => setHighlights(data.highlights ?? []))
+      .catch(() => setHighlights([]));
+  }, [documentId]);
+
+  const pageHighlights = highlights.filter((h) => h.page === currentPage);
+
   const highlightPattern = (text: string) => {
-    if (!searchText.trim()) return text;
-    const escaped = searchText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return text.replace(new RegExp(`(${escaped})`, "gi"), "<mark>$1</mark>");
+    let result = text;
+    // Author highlights first (colored marks), then the search term on top.
+    for (const h of pageHighlights) {
+      const escaped = escapeRegExp(h.textSnippet);
+      if (!escaped) continue;
+      result = result.replace(
+        new RegExp(`(${escaped})`, "gi"),
+        `<mark style="background-color:${h.color}66;color:inherit;border-radius:2px">$1</mark>`
+      );
+    }
+    if (searchText.trim()) {
+      const escaped = escapeRegExp(searchText);
+      result = result.replace(new RegExp(`(${escaped})`, "gi"), "<mark>$1</mark>");
+    }
+    return result;
+  };
+
+  const handleMouseUp = () => {
+    const sel = window.getSelection();
+    const text = sel?.toString().trim();
+    const container = containerRef.current;
+    if (!text || !sel || sel.rangeCount === 0 || !container) {
+      setSelection(null);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    setSelection({
+      text,
+      x: rect.left - containerRect.left + container.scrollLeft + rect.width / 2,
+      y: rect.top - containerRect.top + container.scrollTop,
+    });
+  };
+
+  const createHighlight = async () => {
+    if (!selection) return;
+    const { text } = selection;
+    setSelection(null);
+    window.getSelection()?.removeAllRanges();
+
+    const res = await fetch(`/api/documents/${documentId}/highlights`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        textSnippet: text,
+        page: currentPage,
+        startOffset: 0,
+        endOffset: text.length,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.highlight) {
+      setHighlights((prev) => [
+        ...prev,
+        {
+          id: data.highlight.id,
+          page: data.highlight.page,
+          textSnippet: data.highlight.textSnippet,
+          color: data.highlight.color,
+          authorId: data.highlight.authorId,
+          authorName: "You",
+          isMine: true,
+        },
+      ]);
+    }
+  };
+
+  const deleteHighlight = async (id: string) => {
+    setHighlights((prev) => prev.filter((h) => h.id !== id));
+    await fetch(`/api/highlights/${id}`, { method: "DELETE" }).catch(() => {});
+  };
+
+  const addSelectionToNotes = () => {
+    if (!selection || !onAddToNotes) return;
+    onAddToNotes(selection.text, currentPage);
+    setSelection(null);
+    window.getSelection()?.removeAllRanges();
   };
 
   return (
@@ -127,6 +240,18 @@ export function PdfViewer({
           <PanelLeft size={16} />
         </IconButton>
 
+        <Tooltip label={drawMode ? "Stop drawing" : "Draw on page"}>
+          <button
+            onClick={() => setDrawMode((v) => !v)}
+            aria-label={drawMode ? "Stop drawing" : "Draw on page"}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+              drawMode ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
+            }`}
+          >
+            <Pencil size={16} />
+          </button>
+        </Tooltip>
+
         {onToggleFullscreen && (
           <IconButton
             onClick={onToggleFullscreen}
@@ -156,32 +281,98 @@ export function PdfViewer({
           </div>
         )}
 
-        <div className="glass flex-1 overflow-auto rounded-2xl p-4">
-          {!loaded && (
-            <div className="flex flex-col items-center gap-3 p-8">
-              <Skeleton className="h-[70vh] w-full max-w-md" />
+        <div className="flex min-w-0 flex-1 flex-col gap-2 overflow-hidden">
+          <div
+            ref={containerRef}
+            className="glass relative flex-1 overflow-auto rounded-2xl p-4"
+            onMouseUp={handleMouseUp}
+          >
+            {selection && (
+              <div
+                className="glass absolute z-10 flex -translate-x-1/2 -translate-y-full gap-1 rounded-xl p-1 shadow-lg"
+                style={{ left: selection.x, top: selection.y - 8 }}
+              >
+                <button
+                  onClick={createHighlight}
+                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition hover:bg-black/5 dark:hover:bg-white/10"
+                >
+                  <Highlighter size={13} /> Highlight
+                </button>
+                {onAddToNotes && (
+                  <button
+                    onClick={addSelectionToNotes}
+                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition hover:bg-black/5 dark:hover:bg-white/10"
+                  >
+                    <StickyNote size={13} /> Add to notes
+                  </button>
+                )}
+              </div>
+            )}
+
+            {!loaded && (
+              <div className="flex flex-col items-center gap-3 p-8">
+                <Skeleton className="h-[70vh] w-full max-w-md" />
+              </div>
+            )}
+            <div className={loaded ? "animate-fade-in" : "hidden"}>
+              <Document
+                file={fileUrl}
+                onLoadSuccess={({ numPages: n }) => {
+                  setNumPages(n);
+                  setLoaded(true);
+                }}
+                error={<p className="p-8 text-center text-sm text-red-500">Failed to load PDF.</p>}
+              >
+                <div className="relative inline-block">
+                  <Page
+                    key={currentPage}
+                    pageNumber={currentPage}
+                    scale={scale}
+                    className="animate-fade-in"
+                    customTextRenderer={({ str }) => highlightPattern(str)}
+                    renderAnnotationLayer
+                    renderTextLayer
+                    onRenderSuccess={(page) =>
+                      setPageDimensions({ width: page.width, height: page.height })
+                    }
+                  />
+                  {pageDimensions.width > 0 && (
+                    <DrawingCanvas
+                      documentId={documentId}
+                      page={currentPage}
+                      width={pageDimensions.width}
+                      height={pageDimensions.height}
+                      active={drawMode}
+                    />
+                  )}
+                </div>
+              </Document>
+            </div>
+          </div>
+
+          {pageHighlights.length > 0 && (
+            <div className="glass flex max-h-24 flex-wrap gap-1.5 overflow-y-auto rounded-2xl p-2">
+              {pageHighlights.map((h) => (
+                <span
+                  key={h.id}
+                  className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs"
+                  style={{ backgroundColor: `${h.color}22`, color: h.color }}
+                >
+                  <span className="max-w-[10rem] truncate">{h.textSnippet}</span>
+                  <span className="opacity-70">— {h.authorName}</span>
+                  {h.isMine && (
+                    <button
+                      onClick={() => deleteHighlight(h.id)}
+                      aria-label="Remove highlight"
+                      className="opacity-60 hover:opacity-100"
+                    >
+                      <X size={11} />
+                    </button>
+                  )}
+                </span>
+              ))}
             </div>
           )}
-          <div className={loaded ? "animate-fade-in" : "hidden"}>
-            <Document
-              file={fileUrl}
-              onLoadSuccess={({ numPages: n }) => {
-                setNumPages(n);
-                setLoaded(true);
-              }}
-              error={<p className="p-8 text-center text-sm text-red-500">Failed to load PDF.</p>}
-            >
-              <Page
-                key={currentPage}
-                pageNumber={currentPage}
-                scale={scale}
-                className="animate-fade-in"
-                customTextRenderer={searchText ? ({ str }) => highlightPattern(str) : undefined}
-                renderAnnotationLayer
-                renderTextLayer
-              />
-            </Document>
-          </div>
         </div>
       </div>
     </div>

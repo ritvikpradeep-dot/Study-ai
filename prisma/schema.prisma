@@ -25,10 +25,14 @@ model User {
 
   accounts     Account[]
   sessions     Session[]
-  documents    Document[]
-  ownedTeams   Team[]        @relation("TeamOwner")
-  teamMembers  TeamMember[]
-  aiUsageLogs  AiUsageLog[]
+  documents     Document[]
+  ownedTeams    Team[]        @relation("TeamOwner")
+  teamMembers   TeamMember[]
+  aiUsageLogs   AiUsageLog[]
+  notes         Note[]
+  highlights    Highlight[]
+  drawings      Drawing[]
+  roomMessages  RoomMessage[]
 }
 
 model Account {
@@ -74,23 +78,89 @@ enum DocumentStatus {
 }
 
 model Document {
-  id           String         @id @default(cuid())
-  userId       String
-  teamId       String?
-  title        String
-  filename     String
-  storageUrl   String
-  fileSize     Int
-  pageCount    Int?
-  textContent  String?
-  status       DocumentStatus @default(processing)
-  errorMessage String?
-  createdAt    DateTime       @default(now())
+  id                String         @id @default(cuid())
+  userId            String
+  teamId            String?
+  title             String
+  filename          String
+  storageUrl        String
+  fileSize          Int
+  pageCount         Int?
+  textContent       String?
+  status            DocumentStatus @default(processing)
+  errorMessage      String?
+  // Persisted shared summary (host-generated for room docs); the free-form
+  // summarizer-panel output stays ephemeral/per-viewer and is not this field.
+  summary           String?
+  summaryGeneratedAt DateTime?
+  createdAt         DateTime       @default(now())
 
-  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  team     Team?         @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  messages ChatMessage[]
-  quizzes  Quiz[]
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team       Team?         @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  messages   ChatMessage[]
+  quizzes    Quiz[]
+  notes      Note[]
+  highlights Highlight[]
+  drawings   Drawing[]
+}
+
+// One note per (document, user) — in a team-shared document, each member
+// keeps their own notes rather than overwriting a shared one.
+model Note {
+  id         String   @id @default(cuid())
+  documentId String
+  userId     String
+  content    String   @default("")
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, userId])
+}
+
+// Not personally-identifiable data — a small fixed palette index assigned
+// deterministically per author (see src/lib/annotation-colors.ts) so
+// highlights/drawings don't need a stored color-assignment table.
+model Highlight {
+  id          String   @id @default(cuid())
+  documentId  String
+  authorId    String
+  page        Int
+  textSnippet String
+  startOffset Int
+  endOffset   Int
+  color       String
+  createdAt   DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  author   User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+}
+
+enum DrawingTool {
+  PEN
+  RECTANGLE
+  CIRCLE
+  ARROW
+}
+
+model Drawing {
+  id          String      @id @default(cuid())
+  documentId  String
+  authorId    String
+  page        Int
+  tool        DrawingTool
+  // Array of {x,y} points as fractions (0-1) of the page's rendered
+  // width/height, so a stroke stays aligned across zoom/resize. For PEN it's
+  // the full freehand path; for shapes it's just the drag start/end corners.
+  pathData    Json
+  color       String
+  strokeWidth Int         @default(3)
+  createdAt   DateTime    @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  author   User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
 }
 
 enum TeamRole {
@@ -108,6 +178,20 @@ model Team {
   owner     User         @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members   TeamMember[]
   documents Document[]
+  messages  RoomMessage[]
+}
+
+// The room's human group chat — distinct from ChatMessage, which is the
+// per-document AI Q&A thread.
+model RoomMessage {
+  id        String   @id @default(cuid())
+  teamId    String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+
+  team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
 }
 
 model TeamMember {
@@ -128,6 +212,7 @@ enum AiFeature {
   summarize
   quiz_generate
   quiz_grade
+  mindmap
 }
 
 model AiUsageLog {

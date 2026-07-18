@@ -1,17 +1,29 @@
-import { Users, FileText, UsersRound, Activity, MessageSquare, FileSearch, HelpCircle, CheckCheck } from "lucide-react";
+import { Users, FileText, UsersRound, Activity, MessageSquare, FileSearch, HelpCircle, CheckCheck, GitBranch } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { Card } from "@/components/ui/card";
-import { computeActivityByDay, isWithinLastDays } from "@/lib/dashboard-stats";
+import { computeActivityByDay, isWithinLastDays, daysAgo } from "@/lib/dashboard-stats";
 
 const FEATURE_LABEL: Record<string, { label: string; icon: typeof MessageSquare }> = {
   chat: { label: "Chat messages", icon: MessageSquare },
   summarize: { label: "Summaries", icon: FileSearch },
   quiz_generate: { label: "Quizzes generated", icon: HelpCircle },
   quiz_grade: { label: "Answers graded", icon: CheckCheck },
+  mindmap: { label: "Mind maps", icon: GitBranch },
 };
 
 export default async function AdminOverviewPage() {
-  const [totalUsers, activeUsers, totalDocuments, totalTeams, usageLogs] = await Promise.all([
+  const sevenDaysAgo = daysAgo(7);
+
+  const [
+    totalUsers,
+    activeUsers,
+    totalDocuments,
+    totalTeams,
+    usageLogs,
+    recentRoomMessages,
+    recentTeamDocuments,
+    soloActivityCount,
+  ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { isActive: true } }),
     prisma.document.count(),
@@ -19,6 +31,24 @@ export default async function AdminOverviewPage() {
     prisma.aiUsageLog.findMany({
       select: { feature: true, userId: true, promptTokens: true, completionTokens: true, createdAt: true },
     }),
+    prisma.roomMessage.findMany({ where: { createdAt: { gte: sevenDaysAgo } }, select: { teamId: true } }),
+    prisma.document.findMany({
+      where: { teamId: { not: null }, createdAt: { gte: sevenDaysAgo } },
+      select: { teamId: true },
+    }),
+    // Solo activity: personal (no-team) documents the owner has actually
+    // annotated — a rough proxy for real solo usage, not just uploads.
+    prisma.document.count({
+      where: {
+        teamId: null,
+        OR: [{ notes: { some: {} } }, { highlights: { some: {} } }, { drawings: { some: {} } }],
+      },
+    }),
+  ]);
+
+  const activeRoomIds = new Set([
+    ...recentRoomMessages.map((m) => m.teamId),
+    ...recentTeamDocuments.map((d) => d.teamId as string),
   ]);
 
   const usersActiveLast7Days = new Set(
@@ -51,8 +81,23 @@ export default async function AdminOverviewPage() {
         <StatCard icon={Users} label="Total users" value={totalUsers} sub={`${activeUsers} active`} />
         <StatCard icon={Activity} label="Active last 7 days" value={usersActiveLast7Days} />
         <StatCard icon={FileText} label="Documents" value={totalDocuments} />
-        <StatCard icon={UsersRound} label="Teams" value={totalTeams} />
+        <StatCard
+          icon={UsersRound}
+          label="Rooms"
+          value={totalTeams}
+          sub={`${activeRoomIds.size} active (7d)`}
+        />
       </div>
+
+      <Card className="p-5">
+        <h2 className="mb-1 font-medium">Solo activity</h2>
+        <p className="text-sm opacity-70">
+          <span className="font-medium">{soloActivityCount}</span> personal document
+          {soloActivityCount === 1 ? "" : "s"} annotated (notes, highlights, or drawings) outside any
+          room. Content itself isn&apos;t surfaced here — only a count, for moderation context without
+          exposing private solo work.
+        </p>
+      </Card>
 
       <Card className="p-5">
         <h2 className="mb-1 font-medium">Documents summarized, last 14 days</h2>

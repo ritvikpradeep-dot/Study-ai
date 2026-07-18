@@ -8,7 +8,7 @@ export type AiUsage = { promptTokens: number | null; completionTokens: number | 
 export async function logAiUsage(params: {
   userId: string;
   documentId?: string;
-  feature: "chat" | "summarize" | "quiz_generate" | "quiz_grade";
+  feature: "chat" | "summarize" | "quiz_generate" | "quiz_grade" | "mindmap";
   usage?: AiUsage;
 }) {
   await prisma.aiUsageLog

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { MAX_TEAM_MEMBERS } from "@/lib/teams";
 
 function generateInviteCode() {
   return randomBytes(6).toString("base64url"); // ~8 chars, URL-safe
@@ -29,6 +30,7 @@ export async function GET() {
     inviteCode: m.team.inviteCode,
     myRole: m.role,
     memberCount: m.team._count.members,
+    maxMembers: MAX_TEAM_MEMBERS,
     documentCount: m.team._count.documents,
   }));
 
