@@ -2,16 +2,18 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { Pencil, Square, Circle, ArrowUpRight, Eraser } from "lucide-react";
+import { Pencil, Square, Circle, ArrowUpRight, Eraser, Highlighter } from "lucide-react";
 import { colorForAuthor } from "@/lib/annotation-colors";
 
 type Point = { x: number; y: number };
 type Tool = "PEN" | "RECTANGLE" | "CIRCLE" | "ARROW";
 type ToolOrEraser = Tool | "ERASER";
+type PenType = "PEN" | "HIGHLIGHTER" | "MARKER";
 type DrawingItem = {
   id: string;
   page: number;
   tool: Tool;
+  penType: PenType;
   pathData: Point[];
   color: string;
   strokeWidth: number;
@@ -26,13 +28,50 @@ const TOOLS: { value: Tool; label: string; icon: typeof Pencil }[] = [
   { value: "ARROW", label: "Arrow", icon: ArrowUpRight },
 ];
 
+const PEN_TYPES: { value: PenType; label: string; icon: typeof Pencil }[] = [
+  { value: "PEN", label: "Pen", icon: Pencil },
+  { value: "HIGHLIGHTER", label: "Highlighter", icon: Highlighter },
+  { value: "MARKER", label: "Marker", icon: Pencil },
+];
+
+const THICKNESS_PRESETS: { value: number; label: string }[] = [
+  { value: 2, label: "Thin" },
+  { value: 4, label: "Medium" },
+  { value: 8, label: "Thick" },
+];
+
 const ERASE_RADIUS = 0.02; // fraction of page width — a point "near" a stroke
 
-function drawStroke(ctx: CanvasRenderingContext2D, d: { tool: Tool; pathData: Point[]; color: string; strokeWidth: number }, width: number, height: number) {
+// penType controls how the base strokeWidth/color are rendered: a highlighter
+// is wide, semi-transparent, and blends with what's underneath (like a real
+// highlighter over text); a marker is thicker and fully opaque; a plain pen
+// draws the stroke width as-is.
+function applyPenTypeStyle(ctx: CanvasRenderingContext2D, penType: PenType, strokeWidth: number) {
+  if (penType === "HIGHLIGHTER") {
+    ctx.globalAlpha = 0.35;
+    ctx.globalCompositeOperation = "multiply";
+    ctx.lineWidth = strokeWidth * 3;
+  } else if (penType === "MARKER") {
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.lineWidth = strokeWidth * 2;
+  } else {
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.lineWidth = strokeWidth;
+  }
+}
+
+function drawStroke(
+  ctx: CanvasRenderingContext2D,
+  d: { tool: Tool; penType: PenType; pathData: Point[]; color: string; strokeWidth: number },
+  width: number,
+  height: number
+) {
   const pts = d.pathData.map((p) => ({ x: p.x * width, y: p.y * height }));
   if (pts.length < 2) return;
   ctx.strokeStyle = d.color;
-  ctx.lineWidth = d.strokeWidth;
+  applyPenTypeStyle(ctx, d.penType, d.strokeWidth);
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
@@ -41,34 +80,37 @@ function drawStroke(ctx: CanvasRenderingContext2D, d: { tool: Tool; pathData: Po
     ctx.moveTo(pts[0].x, pts[0].y);
     for (const p of pts.slice(1)) ctx.lineTo(p.x, p.y);
     ctx.stroke();
-    return;
+  } else {
+    const [start, end] = [pts[0], pts[pts.length - 1]];
+    if (d.tool === "RECTANGLE") {
+      ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
+    } else if (d.tool === "CIRCLE") {
+      const cx = (start.x + end.x) / 2;
+      const cy = (start.y + end.y) / 2;
+      const rx = Math.abs(end.x - start.x) / 2;
+      const ry = Math.abs(end.y - start.y) / 2;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (d.tool === "ARROW") {
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(end.x, end.y);
+      ctx.stroke();
+      const angle = Math.atan2(end.y - start.y, end.x - start.x);
+      const headLen = 10 + d.strokeWidth;
+      ctx.beginPath();
+      ctx.moveTo(end.x, end.y);
+      ctx.lineTo(end.x - headLen * Math.cos(angle - Math.PI / 6), end.y - headLen * Math.sin(angle - Math.PI / 6));
+      ctx.moveTo(end.x, end.y);
+      ctx.lineTo(end.x - headLen * Math.cos(angle + Math.PI / 6), end.y - headLen * Math.sin(angle + Math.PI / 6));
+      ctx.stroke();
+    }
   }
 
-  const [start, end] = [pts[0], pts[pts.length - 1]];
-  if (d.tool === "RECTANGLE") {
-    ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
-  } else if (d.tool === "CIRCLE") {
-    const cx = (start.x + end.x) / 2;
-    const cy = (start.y + end.y) / 2;
-    const rx = Math.abs(end.x - start.x) / 2;
-    const ry = Math.abs(end.y - start.y) / 2;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  } else if (d.tool === "ARROW") {
-    ctx.beginPath();
-    ctx.moveTo(start.x, start.y);
-    ctx.lineTo(end.x, end.y);
-    ctx.stroke();
-    const angle = Math.atan2(end.y - start.y, end.x - start.x);
-    const headLen = 10 + d.strokeWidth;
-    ctx.beginPath();
-    ctx.moveTo(end.x, end.y);
-    ctx.lineTo(end.x - headLen * Math.cos(angle - Math.PI / 6), end.y - headLen * Math.sin(angle - Math.PI / 6));
-    ctx.moveTo(end.x, end.y);
-    ctx.lineTo(end.x - headLen * Math.cos(angle + Math.PI / 6), end.y - headLen * Math.sin(angle + Math.PI / 6));
-    ctx.stroke();
-  }
+  // Reset so later strokes on the same context aren't affected.
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = "source-over";
 }
 
 function distanceToStroke(point: Point, d: { pathData: Point[] }) {
@@ -96,11 +138,16 @@ export function DrawingCanvas({
   const { data: session } = useSession();
   const [drawings, setDrawings] = useState<DrawingItem[]>([]);
   const [tool, setTool] = useState<ToolOrEraser>("PEN");
+  const [penType, setPenType] = useState<PenType>("PEN");
+  const [strokeWidth, setStrokeWidth] = useState(4);
+  // Defaults to the author's assigned color; null once the user picks their
+  // own via the color input. Derived rather than synced from session in an
+  // effect, since it's a pure function of already-available state.
+  const [userColor, setUserColor] = useState<string | null>(null);
+  const color = userColor ?? (session?.user?.id ? colorForAuthor(session.user.id) : "#f59e0b");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef<Point[] | null>(null);
   const isPointerDown = useRef(false);
-
-  const myColor = session?.user?.id ? colorForAuthor(session.user.id) : "#f59e0b";
 
   useEffect(() => {
     fetch(`/api/documents/${documentId}/drawings`)
@@ -112,7 +159,7 @@ export function DrawingCanvas({
   const pageDrawings = drawings.filter((d) => d.page === page);
 
   const redraw = useCallback(
-    (inProgress?: { tool: Tool; pathData: Point[]; color: string; strokeWidth: number }) => {
+    (inProgress?: { tool: Tool; penType: PenType; pathData: Point[]; color: string; strokeWidth: number }) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
       const ctx = canvas.getContext("2d");
@@ -143,14 +190,10 @@ export function DrawingCanvas({
   };
 
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!active) return;
+    if (!active || tool === "ERASER") return;
     isPointerDown.current = true;
     canvasRef.current?.setPointerCapture(e.pointerId);
-    const point = toFraction(e);
-
-    if (tool === "PEN" || tool === "RECTANGLE" || tool === "CIRCLE" || tool === "ARROW") {
-      drawingRef.current = [point];
-    }
+    drawingRef.current = [toFraction(e)];
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -163,11 +206,11 @@ export function DrawingCanvas({
     } else {
       drawingRef.current = [drawingRef.current[0], point];
     }
-    redraw({ tool, pathData: drawingRef.current, color: myColor, strokeWidth: 3 });
+    redraw({ tool, penType, pathData: drawingRef.current, color, strokeWidth });
   };
 
   const onPointerUp = async () => {
-    if (!active) return;
+    if (!active || tool === "ERASER") return;
     isPointerDown.current = false;
     const points = drawingRef.current;
     drawingRef.current = null;
@@ -179,7 +222,7 @@ export function DrawingCanvas({
     const res = await fetch(`/api/documents/${documentId}/drawings`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tool, page, pathData: points }),
+      body: JSON.stringify({ tool, penType, page, pathData: points, color, strokeWidth }),
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && data.drawing) {
@@ -189,6 +232,7 @@ export function DrawingCanvas({
           id: data.drawing.id,
           page: data.drawing.page,
           tool: data.drawing.tool,
+          penType: data.drawing.penType,
           pathData: data.drawing.pathData,
           color: data.drawing.color,
           strokeWidth: data.drawing.strokeWidth,
@@ -227,31 +271,74 @@ export function DrawingCanvas({
         onClick={onEraserClick}
       />
       {active && (
-        <div className="glass absolute left-2 top-2 z-10 flex gap-1 rounded-xl p-1 shadow-lg">
-          {TOOLS.map((t) => {
-            const Icon = t.icon;
-            return (
-              <button
-                key={t.value}
-                onClick={() => setTool(t.value)}
-                title={t.label}
-                className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
-                  tool === t.value ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
-                }`}
-              >
-                <Icon size={15} />
-              </button>
-            );
-          })}
-          <button
-            onClick={() => setTool("ERASER")}
-            title="Eraser"
-            className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
-              isEraser ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
-            }`}
-          >
-            <Eraser size={15} />
-          </button>
+        <div className="glass absolute left-2 top-2 z-10 flex flex-col gap-1.5 rounded-xl p-1.5 shadow-lg">
+          <div className="flex gap-1">
+            {TOOLS.map((t) => {
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.value}
+                  onClick={() => setTool(t.value)}
+                  title={t.label}
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+                    tool === t.value ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
+                  }`}
+                >
+                  <Icon size={15} />
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setTool("ERASER")}
+              title="Eraser"
+              className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+                isEraser ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
+              }`}
+            >
+              <Eraser size={15} />
+            </button>
+          </div>
+
+          {!isEraser && (
+            <>
+              <div className="mx-0.5 h-px bg-black/10 dark:bg-white/10" />
+              <div className="flex gap-1">
+                {PEN_TYPES.map((p) => (
+                  <button
+                    key={p.value}
+                    onClick={() => setPenType(p.value)}
+                    title={p.label}
+                    className={`flex-1 rounded-lg px-1.5 py-1 text-[10px] transition ${
+                      penType === p.value ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-1">
+                {THICKNESS_PRESETS.map((t) => (
+                  <button
+                    key={t.value}
+                    onClick={() => setStrokeWidth(t.value)}
+                    title={t.label}
+                    className={`flex-1 rounded-lg px-1.5 py-1 text-[10px] transition ${
+                      strokeWidth === t.value ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="color"
+                value={color}
+                onChange={(e) => setUserColor(e.target.value)}
+                title="Color"
+                className="h-7 w-full cursor-pointer rounded-lg border border-black/10 bg-transparent dark:border-white/10"
+              />
+            </>
+          )}
         </div>
       )}
     </>

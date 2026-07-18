@@ -21,6 +21,7 @@ import {
 import { Tooltip } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DrawingCanvas } from "@/components/drawing-canvas";
+import { StickyNoteLayer, type StickyNoteLayerHandle } from "@/components/sticky-note-layer";
 
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
@@ -71,12 +72,14 @@ export function PdfViewer({
   fullscreen = false,
   onToggleFullscreen,
   onAddToNotes,
+  shared = false,
 }: {
   documentId: string;
   pageCount: number | null;
   fullscreen?: boolean;
   onToggleFullscreen?: () => void;
   onAddToNotes?: (text: string, page: number) => void;
+  shared?: boolean;
 }) {
   const [numPages, setNumPages] = useState<number>(pageCount ?? 0);
   const [currentPage, setCurrentPage] = useState(1);
@@ -86,10 +89,19 @@ export function PdfViewer({
   const [loaded, setLoaded] = useState(false);
 
   const [highlights, setHighlights] = useState<HighlightItem[]>([]);
-  const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null);
+  const [selection, setSelection] = useState<{
+    text: string;
+    x: number;
+    y: number;
+    pageX: number;
+    pageY: number;
+  } | null>(null);
   const [drawMode, setDrawMode] = useState(false);
+  const [stickyMode, setStickyMode] = useState(false);
   const [pageDimensions, setPageDimensions] = useState({ width: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const pageWrapperRef = useRef<HTMLDivElement>(null);
+  const stickyNoteLayerRef = useRef<StickyNoteLayerHandle>(null);
 
   const fileUrl = useMemo(() => `/api/documents/${documentId}/file`, [documentId]);
 
@@ -128,17 +140,23 @@ export function PdfViewer({
     const sel = window.getSelection();
     const text = sel?.toString().trim();
     const container = containerRef.current;
-    if (!text || !sel || sel.rangeCount === 0 || !container) {
+    const pageWrapper = pageWrapperRef.current;
+    if (!text || !sel || sel.rangeCount === 0 || !container || !pageWrapper) {
       setSelection(null);
       return;
     }
     const range = sel.getRangeAt(0);
     const rect = range.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
+    const pageRect = pageWrapper.getBoundingClientRect();
     setSelection({
       text,
       x: rect.left - containerRect.left + container.scrollLeft + rect.width / 2,
       y: rect.top - containerRect.top + container.scrollTop,
+      // Position within the page itself (0-1), for anchoring a linked sticky
+      // note in the margin beside this passage.
+      pageX: Math.min(1, Math.max(0, (rect.right - pageRect.left) / pageRect.width)),
+      pageY: Math.min(1, Math.max(0, (rect.top - pageRect.top) / pageRect.height)),
     });
   };
 
@@ -185,6 +203,14 @@ export function PdfViewer({
     onAddToNotes(selection.text, currentPage);
     setSelection(null);
     window.getSelection()?.removeAllRanges();
+  };
+
+  const addSelectionAsStickyNote = () => {
+    if (!selection) return;
+    // Anchor just to the right of the passage, in the margin, per spec —
+    // and mark the passage itself so the connection is visually obvious.
+    stickyNoteLayerRef.current?.createAt(Math.min(0.92, selection.pageX + 0.02), selection.pageY);
+    createHighlight();
   };
 
   return (
@@ -242,13 +268,31 @@ export function PdfViewer({
 
         <Tooltip label={drawMode ? "Stop drawing" : "Draw on page"}>
           <button
-            onClick={() => setDrawMode((v) => !v)}
+            onClick={() => {
+              setDrawMode((v) => !v);
+              setStickyMode(false);
+            }}
             aria-label={drawMode ? "Stop drawing" : "Draw on page"}
             className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
               drawMode ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
             }`}
           >
             <Pencil size={16} />
+          </button>
+        </Tooltip>
+
+        <Tooltip label={stickyMode ? "Cancel sticky note" : "Place a sticky note"}>
+          <button
+            onClick={() => {
+              setStickyMode((v) => !v);
+              setDrawMode(false);
+            }}
+            aria-label={stickyMode ? "Cancel sticky note" : "Place a sticky note"}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+              stickyMode ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
+            }`}
+          >
+            <StickyNote size={16} />
           </button>
         </Tooltip>
 
@@ -306,6 +350,12 @@ export function PdfViewer({
                     <StickyNote size={13} /> Add to notes
                   </button>
                 )}
+                <button
+                  onClick={addSelectionAsStickyNote}
+                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition hover:bg-black/5 dark:hover:bg-white/10"
+                >
+                  <StickyNote size={13} /> Sticky note
+                </button>
               </div>
             )}
 
@@ -323,7 +373,7 @@ export function PdfViewer({
                 }}
                 error={<p className="p-8 text-center text-sm text-red-500">Failed to load PDF.</p>}
               >
-                <div className="relative inline-block">
+                <div ref={pageWrapperRef} className="relative inline-block">
                   <Page
                     key={currentPage}
                     pageNumber={currentPage}
@@ -337,13 +387,25 @@ export function PdfViewer({
                     }
                   />
                   {pageDimensions.width > 0 && (
-                    <DrawingCanvas
-                      documentId={documentId}
-                      page={currentPage}
-                      width={pageDimensions.width}
-                      height={pageDimensions.height}
-                      active={drawMode}
-                    />
+                    <>
+                      <DrawingCanvas
+                        documentId={documentId}
+                        page={currentPage}
+                        width={pageDimensions.width}
+                        height={pageDimensions.height}
+                        active={drawMode}
+                      />
+                      <StickyNoteLayer
+                        ref={stickyNoteLayerRef}
+                        documentId={documentId}
+                        page={currentPage}
+                        width={pageDimensions.width}
+                        height={pageDimensions.height}
+                        shared={shared}
+                        placing={stickyMode}
+                        onPlaced={() => setStickyMode(false)}
+                      />
+                    </>
                   )}
                 </div>
               </Document>

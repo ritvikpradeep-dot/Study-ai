@@ -5,6 +5,8 @@ import { canAccessDocument } from "@/lib/documents";
 import { colorForAuthor } from "@/lib/annotation-colors";
 
 const VALID_TOOLS = ["PEN", "RECTANGLE", "CIRCLE", "ARROW"];
+const VALID_PEN_TYPES = ["PEN", "HIGHLIGHTER", "MARKER"];
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 export async function GET(
   _request: Request,
@@ -30,6 +32,7 @@ export async function GET(
       id: d.id,
       page: d.page,
       tool: d.tool,
+      penType: d.penType,
       pathData: d.pathData,
       color: d.color,
       strokeWidth: d.strokeWidth,
@@ -54,8 +57,18 @@ export async function POST(
 
   const body = await request.json().catch(() => ({}));
   const tool = typeof body.tool === "string" && VALID_TOOLS.includes(body.tool) ? body.tool : null;
+  const penType =
+    typeof body.penType === "string" && VALID_PEN_TYPES.includes(body.penType) ? body.penType : "PEN";
   const page = Number.isInteger(body.page) ? body.page : 1;
   const points = Array.isArray(body.pathData) ? body.pathData : null;
+  const strokeWidth =
+    Number.isInteger(body.strokeWidth) && body.strokeWidth >= 1 && body.strokeWidth <= 24
+      ? body.strokeWidth
+      : 3;
+  const color =
+    typeof body.color === "string" && HEX_COLOR.test(body.color)
+      ? body.color
+      : colorForAuthor(session.user.id);
 
   if (!tool || !points || points.length < 2) {
     return NextResponse.json({ error: "Invalid drawing data." }, { status: 400 });
@@ -80,9 +93,10 @@ export async function POST(
       authorId: session.user.id,
       page,
       tool,
+      penType,
       pathData: points,
-      color: colorForAuthor(session.user.id),
-      strokeWidth: 3,
+      color,
+      strokeWidth,
     },
   });
 

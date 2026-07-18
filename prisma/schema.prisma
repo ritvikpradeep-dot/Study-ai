@@ -32,6 +32,7 @@ model User {
   notes         Note[]
   highlights    Highlight[]
   drawings      Drawing[]
+  stickyNotes   StickyNote[]
   roomMessages  RoomMessage[]
 }
 
@@ -99,9 +100,10 @@ model Document {
   team       Team?         @relation(fields: [teamId], references: [id], onDelete: SetNull)
   messages   ChatMessage[]
   quizzes    Quiz[]
-  notes      Note[]
-  highlights Highlight[]
-  drawings   Drawing[]
+  notes       Note[]
+  highlights  Highlight[]
+  drawings    Drawing[]
+  stickyNotes StickyNote[]
 }
 
 // One note per (document, user) — in a team-shared document, each member
@@ -145,19 +147,50 @@ enum DrawingTool {
   ARROW
 }
 
+// The "ink" rendering style, orthogonal to DrawingTool (which is the shape
+// being drawn — freehand vs. rectangle/circle/arrow). A highlighter or
+// marker rectangle is a legitimate combination (e.g. highlighting a block),
+// so this applies uniformly across all DrawingTool values rather than being
+// restricted to PEN.
+enum DrawingPenType {
+  PEN
+  HIGHLIGHTER
+  MARKER
+}
+
 model Drawing {
-  id          String      @id @default(cuid())
+  id          String         @id @default(cuid())
   documentId  String
   authorId    String
   page        Int
   tool        DrawingTool
+  penType     DrawingPenType @default(PEN)
   // Array of {x,y} points as fractions (0-1) of the page's rendered
   // width/height, so a stroke stays aligned across zoom/resize. For PEN it's
   // the full freehand path; for shapes it's just the drag start/end corners.
   pathData    Json
   color       String
-  strokeWidth Int         @default(3)
-  createdAt   DateTime    @default(now())
+  strokeWidth Int            @default(3)
+  createdAt   DateTime       @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  author   User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+}
+
+// Draggable annotation anchored to a point on a page — same solo/room
+// pattern as Highlight/Drawing/Note: no roomId column, visibility derives
+// from the parent Document's teamId via canAccessDocument.
+model StickyNote {
+  id         String   @id @default(cuid())
+  documentId String
+  authorId   String
+  page       Int
+  x          Float
+  y          Float
+  content    String   @default("")
+  color      String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   author   User     @relation(fields: [authorId], references: [id], onDelete: Cascade)

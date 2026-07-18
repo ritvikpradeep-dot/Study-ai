@@ -73,6 +73,7 @@ export function DocumentWorkspace({
           fullscreen={fullscreen}
           onToggleFullscreen={() => setFullscreen((v) => !v)}
           onAddToNotes={handleAddToNotes}
+          shared={Boolean(teamId)}
         />
       </div>
 
