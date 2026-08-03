@@ -129,6 +129,43 @@ export function PdfViewer({
     setCurrentPage(1);
   }, [documentId]);
 
+  // Struggle-heatmap dwell tracking: accumulates seconds spent per page and
+  // flushes periodically. The server silently no-ops for solo documents or
+  // rooms that didn't opt into struggle-data sharing, so this can fire
+  // unconditionally for any room document without knowing the sharing state.
+  const dwellRef = useRef({ page: currentPage, seconds: 0 });
+  const flushDwell = useCallback(() => {
+    const { page, seconds } = dwellRef.current;
+    dwellRef.current.seconds = 0;
+    if (!teamId || seconds <= 0) return;
+    fetch(`/api/documents/${documentId}/dwell`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page, seconds }),
+      keepalive: true,
+    }).catch(() => {});
+  }, [teamId, documentId]);
+
+  useEffect(() => {
+    flushDwell();
+    dwellRef.current.page = currentPage;
+  }, [currentPage, flushDwell]);
+
+  useEffect(() => {
+    if (!teamId) return;
+    const tick = setInterval(() => {
+      if (document.visibilityState === "visible") dwellRef.current.seconds += 1;
+    }, 1000);
+    const flushTimer = setInterval(flushDwell, 10000);
+    window.addEventListener("beforeunload", flushDwell);
+    return () => {
+      clearInterval(tick);
+      clearInterval(flushTimer);
+      window.removeEventListener("beforeunload", flushDwell);
+      flushDwell();
+    };
+  }, [teamId, flushDwell]);
+
   useEffect(() => {
     fetch(`/api/documents/${documentId}/highlights`)
       .then((r) => r.json())
@@ -173,6 +210,10 @@ export function PdfViewer({
       channel.bind("member-kicked", (data: { kickedUserId: string }) => {
         if (data.kickedUserId !== session?.user?.id) return;
         toast.show("You were removed from this room by the host.", "error");
+        router.push("/dashboard");
+      });
+      channel.bind("room-disbanded", () => {
+        toast.show("This room has been closed by the host.", "error");
         router.push("/dashboard");
       });
     },

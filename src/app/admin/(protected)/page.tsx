@@ -23,6 +23,7 @@ export default async function AdminOverviewPage() {
     recentRoomMessages,
     recentTeamDocuments,
     soloActivityCount,
+    openRooms,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { isActive: true } }),
@@ -44,6 +45,7 @@ export default async function AdminOverviewPage() {
         OR: [{ notes: { some: {} } }, { highlights: { some: {} } }, { drawings: { some: {} } }],
       },
     }),
+    prisma.team.count({ where: { closedAt: null } }),
   ]);
 
   const activeRoomIds = new Set([
@@ -53,6 +55,9 @@ export default async function AdminOverviewPage() {
 
   const usersActiveLast7Days = new Set(
     usageLogs.filter((l) => isWithinLastDays(l.createdAt, 7)).map((l) => l.userId)
+  ).size;
+  const usersActiveLast24h = new Set(
+    usageLogs.filter((l) => isWithinLastDays(l.createdAt, 1)).map((l) => l.userId)
   ).size;
 
   const summarizeDates = usageLogs.filter((l) => l.feature === "summarize").map((l) => l.createdAt);
@@ -79,13 +84,18 @@ export default async function AdminOverviewPage() {
     <div className="flex flex-col gap-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard icon={Users} label="Total users" value={totalUsers} sub={`${activeUsers} active`} />
-        <StatCard icon={Activity} label="Active last 7 days" value={usersActiveLast7Days} />
+        <StatCard
+          icon={Activity}
+          label="Active last 7 days"
+          value={usersActiveLast7Days}
+          sub={`${usersActiveLast24h} in last 24h`}
+        />
         <StatCard icon={FileText} label="Documents" value={totalDocuments} />
         <StatCard
           icon={UsersRound}
           label="Rooms"
           value={totalTeams}
-          sub={`${activeRoomIds.size} active (7d)`}
+          sub={`${openRooms} open · ${activeRoomIds.size} active (7d)`}
         />
       </div>
 

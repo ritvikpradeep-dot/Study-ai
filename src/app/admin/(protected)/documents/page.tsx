@@ -12,7 +12,7 @@ export default async function AdminDocumentsPage() {
       status: true,
       createdAt: true,
       user: { select: { id: true, name: true, email: true } },
-      team: { select: { id: true, name: true } },
+      team: { select: { id: true, name: true, shareStruggleData: true } },
       _count: { select: { quizzes: true, messages: true } },
     },
   });

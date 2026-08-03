@@ -45,6 +45,7 @@ model User {
   activityLogEntries ActivityLogEntry[]
   pomodoroSessionsStarted PomodoroSession[]
   editPermissions   EditPermission[]
+  pageDwells        PageDwell[]
 }
 
 model Account {
@@ -115,6 +116,7 @@ model Document {
   highlights  Highlight[]
   drawings    Drawing[]
   stickyNotes StickyNote[]
+  pageDwells  PageDwell[]
 }
 
 // One note per (document, user) — in a team-shared document, each member
@@ -136,6 +138,23 @@ model Note {
 // Not personally-identifiable data — a small fixed palette index assigned
 // deterministically per author (see src/lib/annotation-colors.ts) so
 // highlights/drawings don't need a stored color-assignment table.
+// Accumulated per-user reading time per page, written only for documents in
+// rooms that opted into struggle-data sharing. Read exclusively as anonymized
+// aggregates (sum + distinct-user count) by the admin heatmap.
+model PageDwell {
+  id         String   @id @default(cuid())
+  documentId String
+  userId     String
+  page       Int
+  seconds    Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, userId, page])
+}
+
 model Highlight {
   id          String   @id @default(cuid())
   documentId  String
@@ -316,6 +335,10 @@ model Team {
   // uploads/joins/edits but keeps existing history visible, rather than
   // deleting the room outright.
   closedAt   DateTime?
+  // Host opt-in at room creation: allow this room's annotation/dwell signal
+  // to feed the admin per-document struggle heatmap (anonymized aggregates
+  // only). Default off — dwell rows are never written for non-opted rooms.
+  shareStruggleData Boolean @default(false)
 
   owner           User               @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members         TeamMember[]

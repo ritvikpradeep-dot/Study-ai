@@ -45,6 +45,7 @@ export async function POST(request: Request) {
   const name = typeof body.name === "string" ? body.name.trim() : "";
   if (!name) return NextResponse.json({ error: "Team name is required." }, { status: 400 });
   if (name.length > 60) return NextResponse.json({ error: "Team name is too long." }, { status: 400 });
+  const shareStruggleData = body.shareStruggleData === true;
 
   // inviteCode collisions are astronomically unlikely at this scale, but
   // retry once just in case rather than letting the unique constraint 500.
@@ -55,6 +56,7 @@ export async function POST(request: Request) {
           name,
           ownerId: session.user.id,
           inviteCode: generateInviteCode(),
+          shareStruggleData,
           members: {
             create: { userId: session.user.id, role: "OWNER" },
           },

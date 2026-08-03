@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Flame } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,7 @@ type AdminDocument = {
   status: string;
   createdAt: string;
   user: { id: string; name: string | null; email: string };
-  team: { id: string; name: string } | null;
+  team: { id: string; name: string; shareStruggleData: boolean } | null;
   _count: { quizzes: number; messages: number };
 };
 
@@ -85,15 +86,22 @@ export function AdminDocumentsTable({ initialDocuments }: { initialDocuments: Ad
               <dt className="opacity-60">Uploaded</dt>
               <dd className="text-right">{new Date(d.createdAt).toLocaleDateString()}</dd>
             </dl>
-            <Button
-              size="sm"
-              variant="danger"
-              className="mt-3 min-h-[44px] w-full"
-              disabled={busyId === d.id}
-              onClick={() => removeDocument(d.id, d.title)}
-            >
-              Delete
-            </Button>
+            <div className="mt-3 flex gap-2">
+              {d.team?.shareStruggleData && (
+                <Button size="sm" variant="secondary" className="min-h-[44px] flex-1" href={`/admin/documents/${d.id}/heatmap`}>
+                  <Flame size={14} /> Heatmap
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="danger"
+                className="min-h-[44px] flex-1"
+                disabled={busyId === d.id}
+                onClick={() => removeDocument(d.id, d.title)}
+              >
+                Delete
+              </Button>
+            </div>
           </Card>
         ))}
       </div>
@@ -136,14 +144,21 @@ export function AdminDocumentsTable({ initialDocuments }: { initialDocuments: Ad
               </td>
               <td className="px-4 py-3 text-xs opacity-60">{new Date(d.createdAt).toLocaleDateString()}</td>
               <td className="px-4 py-3">
-                <Button
-                  size="sm"
-                  variant="danger"
-                  disabled={busyId === d.id}
-                  onClick={() => removeDocument(d.id, d.title)}
-                >
-                  Delete
-                </Button>
+                <div className="flex gap-2">
+                  {d.team?.shareStruggleData && (
+                    <Button size="sm" variant="secondary" href={`/admin/documents/${d.id}/heatmap`}>
+                      <Flame size={14} /> Heatmap
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    disabled={busyId === d.id}
+                    onClick={() => removeDocument(d.id, d.title)}
+                  >
+                    Delete
+                  </Button>
+                </div>
               </td>
             </tr>
           ))}

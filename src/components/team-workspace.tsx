@@ -17,6 +17,7 @@ import {
   FileText,
   MessagesSquare,
   Clock,
+  Trash2,
 } from "lucide-react";
 import { useInterfaceMode } from "@/lib/interface-mode";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
@@ -116,6 +117,10 @@ export function TeamWorkspace({
       channel.bind("pomodoro-started", () => {
         if (!isHost) toast.show("The host started a Pomodoro session.", "success");
       });
+      channel.bind("room-disbanded", () => {
+        if (!isHost) toast.show("This room has been closed by the host.", "error");
+        router.push("/dashboard");
+      });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [team.id, session?.user?.id, isHost]
@@ -151,6 +156,24 @@ export function TeamWorkspace({
       toast.show(data.error || "Failed to update room status.", "error");
       return;
     }
+    router.refresh();
+  }
+
+  async function disbandRoom() {
+    if (
+      !confirm(
+        `Permanently disband "${team.name}"? This deletes the room, its documents, drawings, notes, and chat history for everyone. This cannot be undone.`
+      )
+    )
+      return;
+    const res = await fetch(`/api/teams/${team.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      toast.show(data.error || "Failed to disband room.", "error");
+      return;
+    }
+    toast.show("Room disbanded.", "success");
+    router.push("/teams");
     router.refresh();
   }
 
@@ -227,17 +250,22 @@ export function TeamWorkspace({
         </div>
         <div className="flex shrink-0 gap-2">
           {isHost && (
-            <Button variant="secondary" size="sm" onClick={toggleRoomClosed}>
-              {team.closedAt ? (
-                <>
-                  <Unlock size={14} /> Reopen room
-                </>
-              ) : (
-                <>
-                  <Lock size={14} /> Close room
-                </>
-              )}
-            </Button>
+            <>
+              <Button variant="secondary" size="sm" onClick={toggleRoomClosed}>
+                {team.closedAt ? (
+                  <>
+                    <Unlock size={14} /> Reopen room
+                  </>
+                ) : (
+                  <>
+                    <Lock size={14} /> Close room
+                  </>
+                )}
+              </Button>
+              <Button variant="danger" size="sm" onClick={disbandRoom}>
+                <Trash2 size={14} /> Disband room
+              </Button>
+            </>
           )}
           {!isHost && (
             <Button variant="secondary" size="sm" onClick={leaveTeam} disabled={leaving}>

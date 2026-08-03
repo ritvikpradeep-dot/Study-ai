@@ -18,6 +18,7 @@ export async function GET() {
     recentRoomMessages,
     recentTeamDocuments,
     soloActivityCount,
+    openRooms,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { isActive: true } }),
@@ -37,6 +38,7 @@ export async function GET() {
         OR: [{ notes: { some: {} } }, { highlights: { some: {} } }, { drawings: { some: {} } }],
       },
     }),
+    prisma.team.count({ where: { closedAt: null } }),
   ]);
 
   const activeRooms = new Set([
@@ -46,6 +48,9 @@ export async function GET() {
 
   const usersActiveLast7Days = new Set(
     usageLogs.filter((l) => isWithinLastDays(l.createdAt, 7)).map((l) => l.userId)
+  ).size;
+  const usersActiveLast24h = new Set(
+    usageLogs.filter((l) => isWithinLastDays(l.createdAt, 1)).map((l) => l.userId)
   ).size;
 
   const summarizeDates = usageLogs.filter((l) => l.feature === "summarize").map((l) => l.createdAt);
@@ -70,8 +75,10 @@ export async function GET() {
     totalUsers,
     activeUsers,
     usersActiveLast7Days,
+    usersActiveLast24h,
     totalDocuments,
     totalTeams,
+    openRooms,
     activeRooms,
     soloActivityCount,
     documentsSummarizedByDay,

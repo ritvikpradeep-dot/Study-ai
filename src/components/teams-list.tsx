@@ -39,6 +39,7 @@ export function TeamsList({ initialTeams }: { initialTeams: Team[] }) {
   const [joinOpen, setJoinOpen] = useState(false);
   const [joinTargetName, setJoinTargetName] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const [shareStruggleData, setShareStruggleData] = useState(false);
   const [inviteCode, setInviteCode] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -57,7 +58,7 @@ export function TeamsList({ initialTeams }: { initialTeams: Team[] }) {
       const res = await fetch("/api/teams", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() }),
+        body: JSON.stringify({ name: name.trim(), shareStruggleData }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -66,6 +67,7 @@ export function TeamsList({ initialTeams }: { initialTeams: Team[] }) {
       }
       setCreateOpen(false);
       setName("");
+      setShareStruggleData(false);
       router.push(`/teams/${json.team.id}`);
     } finally {
       setBusy(false);
@@ -217,6 +219,22 @@ export function TeamsList({ initialTeams }: { initialTeams: Team[] }) {
             maxLength={60}
             className="rounded-xl border border-black/10 bg-transparent px-3.5 py-2.5 text-sm outline-none focus:border-accent dark:border-white/15"
           />
+          <label className="flex items-start gap-2.5 rounded-xl border border-black/10 px-3.5 py-2.5 text-sm dark:border-white/15">
+            <input
+              type="checkbox"
+              checked={shareStruggleData}
+              onChange={(e) => setShareStruggleData(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              Share anonymized struggle data for this document
+              <span className="mt-0.5 block text-xs opacity-60">
+                Lets admins see which pages/passages this room&apos;s members find hardest, aggregated
+                across all rooms sharing the same document. No individual student is identified. Off by
+                default.
+              </span>
+            </span>
+          </label>
           <Button onClick={createTeam} disabled={busy || !name.trim()}>
             Create room
           </Button>
