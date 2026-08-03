@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Eye } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -95,10 +96,14 @@ export function AdminUsersTable({
               <dt className="opacity-60">Joined</dt>
               <dd className="text-right">{new Date(u.createdAt).toLocaleDateString()}</dd>
             </dl>
-            {u.id === currentUserId ? (
-              <p className="mt-3 text-xs opacity-50">This is you</p>
-            ) : (
-              <div className="mt-3 flex flex-col gap-2">
+            <div className="mt-3 flex flex-col gap-2">
+              <Button size="sm" variant="secondary" className="min-h-[44px]" href={`/admin/users/${u.id}`}>
+                <Eye size={14} /> View activity
+              </Button>
+              {u.id === currentUserId ? (
+                <p className="text-xs opacity-50">This is you — the actions below don&apos;t apply to yourself</p>
+              ) : (
+                <>
                 <Button
                   size="sm"
                   variant="secondary"
@@ -126,8 +131,9 @@ export function AdminUsersTable({
                 >
                   Remove
                 </Button>
-              </div>
-            )}
+                </>
+              )}
+            </div>
           </Card>
         ))}
       </div>
@@ -165,10 +171,14 @@ export function AdminUsersTable({
               </td>
               <td className="px-4 py-3 text-xs opacity-60">{new Date(u.createdAt).toLocaleDateString()}</td>
               <td className="px-4 py-3">
-                {u.id === currentUserId ? (
-                  <span className="text-xs opacity-50">This is you</span>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-1.5">
+                  <Button size="sm" variant="secondary" href={`/admin/users/${u.id}`}>
+                    <Eye size={14} /> View
+                  </Button>
+                  {u.id === currentUserId ? (
+                    <span className="self-center text-xs opacity-50">This is you</span>
+                  ) : (
+                    <>
                     <Button
                       size="sm"
                       variant="secondary"
@@ -193,8 +203,9 @@ export function AdminUsersTable({
                     >
                       Remove
                     </Button>
-                  </div>
-                )}
+                    </>
+                  )}
+                </div>
               </td>
             </tr>
           ))}

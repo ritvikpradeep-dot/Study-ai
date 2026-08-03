@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Flame } from "lucide-react";
+import { Flame, Eye } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -86,7 +86,10 @@ export function AdminDocumentsTable({ initialDocuments }: { initialDocuments: Ad
               <dt className="opacity-60">Uploaded</dt>
               <dd className="text-right">{new Date(d.createdAt).toLocaleDateString()}</dd>
             </dl>
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button size="sm" variant="secondary" className="min-h-[44px] flex-1" href={`/admin/documents/${d.id}`}>
+                <Eye size={14} /> View content
+              </Button>
               {d.team?.shareStruggleData && (
                 <Button size="sm" variant="secondary" className="min-h-[44px] flex-1" href={`/admin/documents/${d.id}/heatmap`}>
                   <Flame size={14} /> Heatmap
@@ -144,7 +147,10 @@ export function AdminDocumentsTable({ initialDocuments }: { initialDocuments: Ad
               </td>
               <td className="px-4 py-3 text-xs opacity-60">{new Date(d.createdAt).toLocaleDateString()}</td>
               <td className="px-4 py-3">
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="secondary" href={`/admin/documents/${d.id}`}>
+                    <Eye size={14} /> View
+                  </Button>
                   {d.team?.shareStruggleData && (
                     <Button size="sm" variant="secondary" href={`/admin/documents/${d.id}/heatmap`}>
                       <Flame size={14} /> Heatmap
