@@ -41,6 +41,7 @@ type TeamDocument = {
   pageCount: number | null;
   status: string;
   createdAt: string;
+  userId: string;
   user: { name: string | null; email: string };
 };
 
@@ -177,6 +178,27 @@ export function TeamWorkspace({
     router.refresh();
   }
 
+  async function deleteDocument(doc: TeamDocument) {
+    if (
+      !confirm(
+        `Permanently delete "${doc.title}"? This also deletes its summaries, quizzes, notes, room chat history, and annotations. If this is the room's only document, the room will be disbanded for everyone.`
+      )
+    )
+      return;
+    const res = await fetch(`/api/documents/${doc.id}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.show(data.error || "Failed to delete document.", "error");
+      return;
+    }
+    toast.show(data.roomDisbanded ? "Document deleted — room disbanded." : "Document deleted.", "success");
+    if (data.roomDisbanded) {
+      router.push("/teams");
+    } else {
+      router.refresh();
+    }
+  }
+
   async function toggleEditAccess(userId: string) {
     const canEdit = !editPermissions[userId];
     setBusyUserId(userId);
@@ -306,8 +328,8 @@ export function TeamWorkspace({
                 <div className="grid gap-3 sm:grid-cols-2">
                   {documents.map((doc) => (
                     <Card key={doc.id} hover className="p-4">
-                      <a href={`/documents/${doc.id}`} className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
+                      <div className="flex items-center justify-between gap-3">
+                        <a href={`/documents/${doc.id}`} className="min-w-0 flex-1">
                           <p className="truncate font-medium">{doc.title}</p>
                           <p className="mt-0.5 text-xs opacity-60">
                             {formatBytes(doc.fileSize)}
@@ -316,9 +338,21 @@ export function TeamWorkspace({
                           <p className="mt-0.5 text-xs opacity-50">
                             by {doc.user.name || doc.user.email}
                           </p>
+                        </a>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <Badge tone={STATUS_TONE[doc.status] ?? "neutral"}>{doc.status}</Badge>
+                          {doc.userId === session?.user?.id && (
+                            <button
+                              onClick={() => deleteDocument(doc)}
+                              aria-label="Delete document"
+                              title="Delete document"
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-red-500 transition hover:bg-red-500/10"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
                         </div>
-                        <Badge tone={STATUS_TONE[doc.status] ?? "neutral"}>{doc.status}</Badge>
-                      </a>
+                      </div>
                     </Card>
                   ))}
                 </div>

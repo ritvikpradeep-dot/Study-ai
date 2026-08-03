@@ -34,6 +34,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
         pageCount: true,
         status: true,
         createdAt: true,
+        userId: true,
         user: { select: { name: true, email: true } },
       },
     }),

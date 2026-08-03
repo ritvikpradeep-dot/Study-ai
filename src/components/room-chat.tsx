@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Send } from "lucide-react";
+import type { Channel } from "pusher-js";
+import { Send, Trash2 } from "lucide-react";
 import { colorForAuthor } from "@/lib/annotation-colors";
+import { useTeamChannel } from "@/hooks/use-team-channel";
 
 type Message = {
   id: string;
@@ -46,6 +48,18 @@ export function RoomChat({ teamId, className = "h-[420px]" }: { teamId: string; 
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages]);
 
+  const handleChannel = useCallback((channel: Channel) => {
+    channel.bind("room-message-deleted", (data: { messageId: string }) => {
+      setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
+    });
+  }, []);
+  useTeamChannel(teamId, handleChannel);
+
+  const deleteMessage = async (id: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== id));
+    await fetch(`/api/room-messages/${id}`, { method: "DELETE" }).catch(() => {});
+  };
+
   const send = async () => {
     const content = input.trim();
     if (!content || sending) return;
@@ -75,18 +89,30 @@ export function RoomChat({ teamId, className = "h-[420px]" }: { teamId: string; 
           <p className="p-4 text-center text-sm opacity-50">No messages yet — say hi.</p>
         ) : (
           messages.map((m) => (
-            <div key={m.id} className={`flex flex-col ${m.isMine ? "items-end" : "items-start"}`}>
+            <div key={m.id} className={`group flex flex-col ${m.isMine ? "items-end" : "items-start"}`}>
               {!m.isMine && (
                 <span className="mb-0.5 text-xs font-medium" style={{ color: colorForAuthor(m.authorId) }}>
                   {m.authorName}
                 </span>
               )}
-              <div
-                className={`max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm ${
-                  m.isMine ? "bg-accent text-accent-foreground" : "bg-black/5 dark:bg-white/10"
-                }`}
-              >
-                {m.content}
+              <div className="flex items-center gap-1.5">
+                {m.isMine && (
+                  <button
+                    onClick={() => deleteMessage(m.id)}
+                    aria-label="Delete message"
+                    title="Delete message"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full opacity-40 transition hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
+                <div
+                  className={`max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm ${
+                    m.isMine ? "bg-accent text-accent-foreground" : "bg-black/5 dark:bg-white/10"
+                  }`}
+                >
+                  {m.content}
+                </div>
               </div>
             </div>
           ))

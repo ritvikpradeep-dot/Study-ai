@@ -2,20 +2,17 @@
 
 import { forwardRef, useState } from "react";
 import { SummarizerPanel } from "@/components/summarizer-panel";
-import { ChatPanel } from "@/components/chat-panel";
 import { QuizPanel } from "@/components/quiz-panel";
 import { NotesPanel, type NotesPanelHandle } from "@/components/notes-panel";
 import { RoomChat } from "@/components/room-chat";
 
-// "roomChat" is human-to-human chat between people currently in the room —
-// entirely separate from "chat", which is the AI Q&A panel. Only shown for
-// room documents; a solo document has no one else to chat with.
+// "roomChat" is human-to-human chat between people currently in the room.
+// Only shown for room documents; a solo document has no one else to chat with.
 const ALL_TABS = [
-  { value: "chat", label: "Chat" },
+  { value: "roomChat", label: "Room Chat" },
   { value: "summarize", label: "Summarize" },
   { value: "quiz", label: "Quiz" },
   { value: "notes", label: "Notes" },
-  { value: "roomChat", label: "Room Chat" },
 ] as const;
 
 type Tab = (typeof ALL_TABS)[number]["value"];
@@ -35,7 +32,7 @@ export const DocumentTabs = forwardRef<
   { documentId, title, teamId, isHost, canEdit, initialSharedSummary, initialSummaryGeneratedAt },
   notesRef
 ) {
-    const [tab, setTab] = useState<Tab>("chat");
+    const [tab, setTab] = useState<Tab>(teamId ? "roomChat" : "summarize");
     const tabs = teamId ? ALL_TABS : ALL_TABS.filter((t) => t.value !== "roomChat");
 
     return (
@@ -55,7 +52,6 @@ export const DocumentTabs = forwardRef<
           ))}
         </div>
         <div className="flex-1 overflow-hidden">
-          {tab === "chat" && <ChatPanel documentId={documentId} />}
           {tab === "summarize" && (
             <SummarizerPanel
               documentId={documentId}

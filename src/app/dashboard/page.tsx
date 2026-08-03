@@ -6,10 +6,10 @@ import { prisma } from "@/lib/prisma";
 import { UploadDropzone } from "@/components/upload-dropzone";
 import { AppShell } from "@/components/app-shell";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Reveal } from "@/components/reveal";
+import { MyDocumentsList } from "@/components/my-documents-list";
 import { computeStreak, computeActivityByDay, isWithinLastDays } from "@/lib/dashboard-stats";
 
 function formatBytes(bytes: number) {
@@ -17,12 +17,6 @@ function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
-
-const STATUS_TONE: Record<string, "warning" | "success" | "danger"> = {
-  processing: "warning",
-  ready: "success",
-  error: "danger",
-};
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -136,27 +130,17 @@ export default async function DashboardPage() {
             <Reveal delay={200}>
               <div>
                 <h2 className="mb-3 text-lg font-medium">Your documents</h2>
-                {documents.length === 0 ? (
-                  <EmptyState title="No documents yet" description="Upload a PDF above to get started." />
-                ) : (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {documents.map((doc) => (
-                      <Card key={doc.id} hover className="p-4">
-                        <Link href={`/documents/${doc.id}`} className="flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate font-medium">{doc.title}</p>
-                            <p className="mt-0.5 text-xs opacity-60">
-                              {formatBytes(doc.fileSize)}
-                              {doc.pageCount ? ` · ${doc.pageCount} pages` : ""} ·{" "}
-                              {new Date(doc.createdAt).toLocaleDateString()}
-                            </p>
-                          </div>
-                          <Badge tone={STATUS_TONE[doc.status] ?? "neutral"}>{doc.status}</Badge>
-                        </Link>
-                      </Card>
-                    ))}
-                  </div>
-                )}
+                <MyDocumentsList
+                  initialDocuments={documents.map((d) => ({
+                    id: d.id,
+                    title: d.title,
+                    fileSize: d.fileSize,
+                    pageCount: d.pageCount,
+                    status: d.status,
+                    createdAt: d.createdAt.toISOString(),
+                    teamId: d.teamId,
+                  }))}
+                />
               </div>
             </Reveal>
           </div>
