@@ -228,6 +228,13 @@ export function DrawingCanvas({
           );
         }
       );
+      channel.bind(
+        "drawing-deleted",
+        (data: { documentId: string; drawingId: string }) => {
+          if (data.documentId !== documentId) return;
+          setDrawings((prev) => prev.filter((d) => d.id !== data.drawingId));
+        }
+      );
     },
     [documentId, page, session?.user?.id]
   );
@@ -396,6 +403,11 @@ export function DrawingCanvas({
         className="absolute left-0 top-0"
         style={{
           pointerEvents: active ? "auto" : "none",
+          // Without this, mobile browsers claim single-finger touches for
+          // scrolling before pointer events fire, so strokes pan the page
+          // instead of drawing. Pinch/pan while drawing is reimplemented via
+          // the two-pointer handlers above.
+          touchAction: active ? "none" : "auto",
           cursor: active ? (isEraser ? "cell" : "crosshair") : "default",
         }}
         onPointerDown={handlePointerDown}
