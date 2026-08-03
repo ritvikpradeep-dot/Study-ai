@@ -15,7 +15,9 @@ export async function GET(
   const { id } = await params;
 
   const membership = await requireMembership(id, session.user.id);
-  if (!membership) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!membership && session.user.role !== "ADMIN") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const { searchParams } = new URL(request.url);
   const afterId = searchParams.get("after");

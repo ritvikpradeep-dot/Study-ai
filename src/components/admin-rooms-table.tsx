@@ -1,7 +1,9 @@
 "use client";
 
+import { Eye } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { MAX_TEAM_MEMBERS } from "@/lib/teams";
 import { useInterfaceMode } from "@/lib/interface-mode";
 
@@ -39,6 +41,9 @@ export function AdminRoomsTable({ teams }: { teams: AdminRoom[] }) {
             <p className="mt-2 text-xs opacity-60">
               {t.members.map((m) => m.user.name || m.user.email).join(", ")}
             </p>
+            <Button size="sm" variant="secondary" className="mt-3 min-h-[44px] w-full" href={`/admin/rooms/${t.id}/live`}>
+              <Eye size={14} /> Watch live
+            </Button>
           </Card>
         ))}
       </div>
@@ -55,6 +60,7 @@ export function AdminRoomsTable({ teams }: { teams: AdminRoom[] }) {
             <th className="px-4 py-3 font-medium">Members</th>
             <th className="px-4 py-3 font-medium">Docs</th>
             <th className="px-4 py-3 font-medium">Created</th>
+            <th className="px-4 py-3 font-medium">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -74,6 +80,11 @@ export function AdminRoomsTable({ teams }: { teams: AdminRoom[] }) {
               </td>
               <td className="px-4 py-3 text-xs opacity-70">{t._count.documents}</td>
               <td className="px-4 py-3 text-xs opacity-60">{new Date(t.createdAt).toLocaleDateString()}</td>
+              <td className="px-4 py-3">
+                <Button size="sm" variant="secondary" href={`/admin/rooms/${t.id}/live`}>
+                  <Eye size={14} /> Watch live
+                </Button>
+              </td>
             </tr>
           ))}
         </tbody>

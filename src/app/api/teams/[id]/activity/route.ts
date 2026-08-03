@@ -14,7 +14,9 @@ export async function GET(
   const membership = await prisma.teamMember.findUnique({
     where: { teamId_userId: { teamId: id, userId: session.user.id } },
   });
-  if (!membership) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!membership && session.user.role !== "ADMIN") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const entries = await prisma.activityLogEntry.findMany({
     where: { teamId: id },

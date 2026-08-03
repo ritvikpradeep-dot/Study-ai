@@ -15,7 +15,7 @@ type Message = {
 
 const POLL_INTERVAL_MS = 4000;
 
-export function RoomChat({ teamId }: { teamId: string }) {
+export function RoomChat({ teamId, className = "h-[420px]" }: { teamId: string; className?: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -68,7 +68,7 @@ export function RoomChat({ teamId }: { teamId: string }) {
   };
 
   return (
-    <div className="glass flex h-[420px] flex-col rounded-2xl p-3">
+    <div className={`glass flex flex-col rounded-2xl p-3 ${className}`}>
       <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wide opacity-60">Room chat</p>
       <div ref={listRef} className="flex-1 space-y-2 overflow-y-auto px-1">
         {messages.length === 0 ? (

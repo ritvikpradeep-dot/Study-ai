@@ -29,7 +29,12 @@ export async function POST(request: Request) {
   const membership = await prisma.teamMember.findUnique({
     where: { teamId_userId: { teamId, userId: session.user.id } },
   });
-  if (!membership) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  // Admins can silently observe any room's live channel (cursors, stroke
+  // previews, activity) without joining it — no TeamMember row is created,
+  // so they never appear in the member list or trigger member-joined.
+  if (!membership && session.user.role !== "ADMIN") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const authResponse = authorizeTeamChannel(socketId, channelName);
   return NextResponse.json(authResponse);

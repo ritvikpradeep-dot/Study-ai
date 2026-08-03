@@ -5,15 +5,20 @@ import { SummarizerPanel } from "@/components/summarizer-panel";
 import { ChatPanel } from "@/components/chat-panel";
 import { QuizPanel } from "@/components/quiz-panel";
 import { NotesPanel, type NotesPanelHandle } from "@/components/notes-panel";
+import { RoomChat } from "@/components/room-chat";
 
-const TABS = [
+// "roomChat" is human-to-human chat between people currently in the room —
+// entirely separate from "chat", which is the AI Q&A panel. Only shown for
+// room documents; a solo document has no one else to chat with.
+const ALL_TABS = [
   { value: "chat", label: "Chat" },
   { value: "summarize", label: "Summarize" },
   { value: "quiz", label: "Quiz" },
   { value: "notes", label: "Notes" },
+  { value: "roomChat", label: "Room Chat" },
 ] as const;
 
-type Tab = (typeof TABS)[number]["value"];
+type Tab = (typeof ALL_TABS)[number]["value"];
 
 export const DocumentTabs = forwardRef<
   NotesPanelHandle,
@@ -31,12 +36,13 @@ export const DocumentTabs = forwardRef<
   notesRef
 ) {
     const [tab, setTab] = useState<Tab>("chat");
+    const tabs = teamId ? ALL_TABS : ALL_TABS.filter((t) => t.value !== "roomChat");
 
     return (
       <div className="glass flex h-full flex-col rounded-2xl p-3">
         <p className="mb-2 truncate px-1 text-sm font-medium opacity-80">{title}</p>
         <div className="mb-3 flex gap-1 rounded-xl bg-black/5 dark:bg-white/10 p-1">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <button
               key={t.value}
               onClick={() => setTab(t.value)}
@@ -66,6 +72,14 @@ export const DocumentTabs = forwardRef<
           <div className={tab === "notes" ? "h-full" : "hidden"}>
             <NotesPanel ref={notesRef} documentId={documentId} shared={Boolean(teamId)} canEdit={canEdit} />
           </div>
+          {/* Also kept mounted while hidden — unmounting would drop the polled
+              message list and in-progress input text every time the user tabs
+              away and back. Fully separate from the AI "chat" tab above. */}
+          {teamId && (
+            <div className={tab === "roomChat" ? "h-full" : "hidden"}>
+              <RoomChat teamId={teamId} className="h-full" />
+            </div>
+          )}
         </div>
       </div>
     );
