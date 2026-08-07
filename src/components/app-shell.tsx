@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 type DocSummary = { id: string; title: string; status: string };
 
-const COLLAPSE_KEY = "studyai:sidebarCollapsed";
+const COLLAPSE_KEY = "nous:sidebarCollapsed";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

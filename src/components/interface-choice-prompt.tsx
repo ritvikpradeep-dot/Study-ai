@@ -40,7 +40,7 @@ function InterfaceChoicePrompt() {
     <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-6">
       <div className="w-full max-w-md text-center">
         <Sparkles size={28} className="mx-auto mb-3 text-accent" />
-        <h1 className="text-2xl font-semibold tracking-tight">How will you use StudyAI?</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">How will you use Nous?</h1>
         <p className="mt-2 text-sm opacity-70">
           Pick the layout that fits how you&apos;ll mostly use it. You can switch anytime from the
           appearance menu.

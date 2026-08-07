@@ -24,7 +24,7 @@ export function HeroPreview() {
           style={{ animationDelay: "250ms" }}
         >
           <div className="mb-1.5 flex items-center gap-1 font-medium text-accent">
-            <Sparkles size={12} /> StudyAI
+            <Sparkles size={12} /> Nous
           </div>
           <ul className="ml-3.5 list-disc space-y-1 opacity-80">
             <li>High-sodium diet &amp; sedentary lifestyle</li>

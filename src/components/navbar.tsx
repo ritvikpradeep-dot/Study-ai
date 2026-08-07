@@ -16,7 +16,7 @@ export function Navbar() {
         className="flex items-center gap-2 font-semibold tracking-tight"
       >
         <Sparkles size={18} className="text-accent" />
-        StudyAI
+        Nous
       </Link>
       <div className="flex items-center gap-2">
         <AppearanceMenu />

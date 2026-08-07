@@ -6,7 +6,7 @@ export default function AdminLoginPage() {
   return (
     <LoginForm
       title="Admin sign in"
-      subtitle="Restricted to StudyAI admin accounts."
+      subtitle="Restricted to Nous admin accounts."
       callbackUrl="/admin"
       requireAdmin
       showSignupLink={false}

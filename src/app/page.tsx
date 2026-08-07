@@ -74,7 +74,7 @@ const FAQS = [
   {
     question: "Can I generate a quiz from my own question paper?",
     answer:
-      "Yes — paste an existing set of questions and StudyAI will match answers and explanations using your document as reference.",
+      "Yes — paste an existing set of questions and Nous will match answers and explanations using your document as reference.",
   },
   {
     question: "Is my data private?",
@@ -203,7 +203,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="glass mt-8 px-6 py-8">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 text-sm opacity-60 sm:flex-row">
-          <p>© {new Date().getFullYear()} StudyAI</p>
+          <p>© {new Date().getFullYear()} Nous</p>
           <div className="flex gap-6">
             <a
               href="https://github.com/ritvikpradeep-dot/Study-ai"

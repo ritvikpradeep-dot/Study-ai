@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "StudyAI — AI PDF Study Assistant",
+  title: "Nous — AI PDF Study Assistant",
   description: "Upload PDFs, get AI summaries, chat with your documents, and study smarter.",
 };
 
@@ -40,7 +40,7 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{var a=localStorage.getItem('studyai:accent');if(a){document.documentElement.style.setProperty('--accent',a);}}catch(e){}",
+              "try{var a=localStorage.getItem('nous:accent');if(a){document.documentElement.style.setProperty('--accent',a);}}catch(e){}",
           }}
         />
       </head>

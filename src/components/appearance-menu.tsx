@@ -13,7 +13,7 @@ const ACCENTS: { name: string; value: string }[] = [
   { name: "Rose", value: "#e11d48" },
 ];
 
-const ACCENT_STORAGE_KEY = "studyai:accent";
+const ACCENT_STORAGE_KEY = "nous:accent";
 
 export function AppearanceMenu() {
   const { theme, setTheme } = useTheme();
