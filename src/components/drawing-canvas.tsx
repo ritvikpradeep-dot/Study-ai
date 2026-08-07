@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import type { Channel } from "pusher-js";
-import { Pencil, Square, Circle, ArrowUpRight, Eraser, Highlighter } from "lucide-react";
+import { Pencil, Square, Circle, ArrowUpRight, Eraser, Highlighter, ChevronsLeft } from "lucide-react";
 import { colorForAuthor } from "@/lib/annotation-colors";
 import { useTeamChannel } from "@/hooks/use-team-channel";
 import { throttle } from "@/lib/throttle";
@@ -164,6 +164,10 @@ export function DrawingCanvas({
   // effect, since it's a pure function of already-available state.
   const [userColor, setUserColor] = useState<string | null>(null);
   const color = userColor ?? (session?.user?.id ? colorForAuthor(session.user.id) : "#f59e0b");
+  // Collapsing the panel is independent of drawing being active — closing it
+  // must never turn off the pen tool, since there was previously no way to
+  // see the covered part of the document without losing the tool entirely.
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef<Point[] | null>(null);
   const isPointerDown = useRef(false);
@@ -416,9 +420,27 @@ export function DrawingCanvas({
         onPointerCancel={handlePointerUp}
         onClick={isEraser ? onEraserClick : undefined}
       />
-      {active && (
+      {active && panelCollapsed && (
+        <button
+          onClick={() => setPanelCollapsed(false)}
+          title="Show drawing tools"
+          aria-label="Show drawing tools"
+          className="glass absolute left-2 top-2 z-10 flex h-11 w-11 items-center justify-center rounded-xl shadow-lg transition hover:bg-black/5 dark:hover:bg-white/10"
+        >
+          <Pencil size={16} />
+        </button>
+      )}
+      {active && !panelCollapsed && (
         <div className="glass absolute left-2 top-2 z-10 flex flex-col gap-1.5 rounded-xl p-1.5 shadow-lg">
           <div className="flex gap-1">
+            <button
+              onClick={() => setPanelCollapsed(true)}
+              title="Collapse — keeps the pen tool active"
+              aria-label="Collapse drawing tools"
+              className="flex h-11 w-11 items-center justify-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10"
+            >
+              <ChevronsLeft size={15} />
+            </button>
             {TOOLS.map((t) => {
               const Icon = t.icon;
               return (

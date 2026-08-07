@@ -265,25 +265,42 @@ export function PdfViewer({
     }).catch(() => {});
   };
 
-  const pageHighlights = highlights.filter((h) => h.page === currentPage);
+  const pageHighlights = useMemo(
+    () => highlights.filter((h) => h.page === currentPage),
+    [highlights, currentPage]
+  );
 
-  const highlightPattern = (text: string) => {
-    let result = text;
-    // Author highlights first (colored marks), then the search term on top.
-    for (const h of pageHighlights) {
-      const escaped = escapeRegExp(h.textSnippet);
-      if (!escaped) continue;
-      result = result.replace(
-        new RegExp(`(${escaped})`, "gi"),
-        `<mark style="background-color:${h.color}66;color:inherit;border-radius:2px">$1</mark>`
-      );
-    }
-    if (searchText.trim()) {
-      const escaped = escapeRegExp(searchText);
-      result = result.replace(new RegExp(`(${escaped})`, "gi"), "<mark>$1</mark>");
-    }
-    return result;
-  };
+  // react-pdf tears down and rebuilds the text layer's DOM whenever this
+  // function's reference changes (it's an effect dependency internally) —
+  // which collapses any in-progress native text selection. An inline arrow
+  // function here would change on every render (including unrelated ones,
+  // like a remote cursor broadcast arriving), so it must be memoized against
+  // only the state it actually reads.
+  const highlightPattern = useCallback(
+    (text: string) => {
+      let result = text;
+      // Author highlights first (colored marks), then the search term on top.
+      for (const h of pageHighlights) {
+        const escaped = escapeRegExp(h.textSnippet);
+        if (!escaped) continue;
+        result = result.replace(
+          new RegExp(`(${escaped})`, "gi"),
+          `<mark style="background-color:${h.color}66;color:inherit;border-radius:2px">$1</mark>`
+        );
+      }
+      if (searchText.trim()) {
+        const escaped = escapeRegExp(searchText);
+        result = result.replace(new RegExp(`(${escaped})`, "gi"), "<mark>$1</mark>");
+      }
+      return result;
+    },
+    [pageHighlights, searchText]
+  );
+
+  const customTextRenderer = useCallback(
+    ({ str }: { str: string }) => highlightPattern(str),
+    [highlightPattern]
+  );
 
   const handleMouseUp = () => {
     if (!canEdit) return;
@@ -534,7 +551,7 @@ export function PdfViewer({
                     pageNumber={currentPage}
                     scale={scale}
                     className="animate-fade-in"
-                    customTextRenderer={({ str }) => highlightPattern(str)}
+                    customTextRenderer={customTextRenderer}
                     renderAnnotationLayer
                     renderTextLayer
                     onRenderSuccess={(page) =>
