@@ -10,7 +10,11 @@ import { throttle } from "@/lib/throttle";
 import { useInterfaceMode } from "@/lib/interface-mode";
 
 const TOOLBAR_MARGIN = 8; // px kept clear from the viewport edge when clamping
-const DEFAULT_TOOLBAR_POSITION = { x: 16, y: 88 }; // clears the sticky navbar
+// Clears both the sticky navbar (top-16 = 64px) and the app's own persistent
+// sidebar (AppShell's <aside>, up to w-64 = 256px wide when expanded) — a
+// fixed-position default at x:16 would otherwise land the panel inside that
+// sidebar's column, not anywhere near the document.
+const DEFAULT_TOOLBAR_POSITION = { x: 280, y: 88 };
 
 type Point = { x: number; y: number };
 type Tool = "PEN" | "RECTANGLE" | "CIRCLE" | "ARROW";
