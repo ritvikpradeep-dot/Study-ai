@@ -3,10 +3,14 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import type { Channel } from "pusher-js";
-import { Pencil, Square, Circle, ArrowUpRight, Eraser, Highlighter, ChevronsLeft } from "lucide-react";
+import { Pencil, Square, Circle, ArrowUpRight, Eraser, Highlighter, ChevronsLeft, GripHorizontal } from "lucide-react";
 import { colorForAuthor } from "@/lib/annotation-colors";
 import { useTeamChannel } from "@/hooks/use-team-channel";
 import { throttle } from "@/lib/throttle";
+import { useInterfaceMode } from "@/lib/interface-mode";
+
+const TOOLBAR_MARGIN = 8; // px kept clear from the viewport edge when clamping
+const DEFAULT_TOOLBAR_POSITION = { x: 16, y: 88 }; // clears the sticky navbar
 
 type Point = { x: number; y: number };
 type Tool = "PEN" | "RECTANGLE" | "CIRCLE" | "ARROW";
@@ -168,6 +172,109 @@ export function DrawingCanvas({
   // must never turn off the pen tool, since there was previously no way to
   // see the covered part of the document without losing the tool entirely.
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const { mode } = useInterfaceMode();
+  const isMobile = mode === "mobile";
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [toolbarPosition, setToolbarPosition] = useState(DEFAULT_TOOLBAR_POSITION);
+  const dragState = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const positionStorageKey = session?.user?.id ? `nous:drawToolbarPos:${session.user.id}` : null;
+  const collapsedStorageKey = session?.user?.id ? `nous:drawToolbarCollapsed:${session.user.id}` : null;
+
+  const clampToolbarPosition = useCallback((pos: { x: number; y: number }) => {
+    const rect = panelRef.current?.getBoundingClientRect();
+    const w = rect?.width ?? 200;
+    const h = rect?.height ?? 44;
+    const maxX = Math.max(TOOLBAR_MARGIN, window.innerWidth - w - TOOLBAR_MARGIN);
+    const maxY = Math.max(TOOLBAR_MARGIN, window.innerHeight - h - TOOLBAR_MARGIN);
+    return {
+      x: Math.min(Math.max(pos.x, TOOLBAR_MARGIN), maxX),
+      y: Math.min(Math.max(pos.y, TOOLBAR_MARGIN), maxY),
+    };
+  }, []);
+
+  // Restore this user's last position/collapsed state — same localStorage
+  // pattern already used elsewhere in the app for per-browser preferences
+  // (accent color, sidebar collapse), scoped by userId so two accounts
+  // signed into the same browser don't clobber each other's toolbar spot.
+  useEffect(() => {
+    if (!positionStorageKey) return;
+    try {
+      const raw = localStorage.getItem(positionStorageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed.x === "number" && typeof parsed.y === "number") {
+          setToolbarPosition(clampToolbarPosition(parsed));
+        }
+      }
+    } catch {
+      // Ignore malformed/blocked storage — falls back to the default position.
+    }
+  }, [positionStorageKey, clampToolbarPosition]);
+
+  useEffect(() => {
+    if (!collapsedStorageKey) return;
+    try {
+      const raw = localStorage.getItem(collapsedStorageKey);
+      if (raw != null) setPanelCollapsed(raw === "1");
+    } catch {
+      // Ignore — defaults to expanded.
+    }
+  }, [collapsedStorageKey]);
+
+  useEffect(() => {
+    if (!collapsedStorageKey) return;
+    try {
+      localStorage.setItem(collapsedStorageKey, panelCollapsed ? "1" : "0");
+    } catch {
+      // Best-effort only.
+    }
+  }, [panelCollapsed, collapsedStorageKey]);
+
+  // Keep the toolbar on-screen if the window is resized/rotated.
+  useEffect(() => {
+    const onResize = () => setToolbarPosition((p) => clampToolbarPosition(p));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [clampToolbarPosition]);
+
+  // Dragging only starts from the dedicated grip handle below, so it never
+  // competes with the canvas's own drawing pointer handlers — the handle is
+  // a separate element, not an overlay on top of the canvas.
+  const onHandlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragState.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: toolbarPosition.x,
+      origY: toolbarPosition.y,
+    };
+  };
+
+  const onHandlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragState.current) return;
+    e.stopPropagation();
+    const dx = e.clientX - dragState.current.startX;
+    const dy = e.clientY - dragState.current.startY;
+    setToolbarPosition(clampToolbarPosition({ x: dragState.current.origX + dx, y: dragState.current.origY + dy }));
+  };
+
+  const onHandlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragState.current) return;
+    e.stopPropagation();
+    dragState.current = null;
+    setToolbarPosition((pos) => {
+      if (positionStorageKey) {
+        try {
+          localStorage.setItem(positionStorageKey, JSON.stringify(pos));
+        } catch {
+          // Best-effort only.
+        }
+      }
+      return pos;
+    });
+  };
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef<Point[] | null>(null);
   const isPointerDown = useRef(false);
@@ -398,6 +505,79 @@ export function DrawingCanvas({
     if (hit) deleteDrawing(hit.id);
   };
 
+  const toolButtons = (
+    <>
+      {TOOLS.map((t) => {
+        const Icon = t.icon;
+        return (
+          <button
+            key={t.value}
+            onClick={() => setTool(t.value)}
+            title={t.label}
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition ${
+              tool === t.value ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
+            }`}
+          >
+            <Icon size={15} />
+          </button>
+        );
+      })}
+      <button
+        onClick={() => setTool("ERASER")}
+        title="Eraser"
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition ${
+          isEraser ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
+        }`}
+      >
+        <Eraser size={15} />
+      </button>
+    </>
+  );
+
+  const penTypeButtons = (
+    <>
+      {PEN_TYPES.map((p) => (
+        <button
+          key={p.value}
+          onClick={() => setPenType(p.value)}
+          title={p.label}
+          className={`shrink-0 rounded-lg px-2 py-1.5 text-[10px] transition ${
+            penType === p.value ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
+          }`}
+        >
+          {p.label}
+        </button>
+      ))}
+    </>
+  );
+
+  const thicknessButtons = (
+    <>
+      {THICKNESS_PRESETS.map((t) => (
+        <button
+          key={t.value}
+          onClick={() => setStrokeWidth(t.value)}
+          title={t.label}
+          className={`shrink-0 rounded-lg px-2 py-1.5 text-[10px] transition ${
+            strokeWidth === t.value ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </>
+  );
+
+  const colorInput = (
+    <input
+      type="color"
+      value={color}
+      onChange={(e) => setUserColor(e.target.value)}
+      title="Color"
+      className="h-9 w-9 shrink-0 cursor-pointer rounded-lg border border-black/10 bg-transparent dark:border-white/10"
+    />
+  );
+
   return (
     <>
       <canvas
@@ -420,18 +600,77 @@ export function DrawingCanvas({
         onPointerCancel={handlePointerUp}
         onClick={isEraser ? onEraserClick : undefined}
       />
-      {active && panelCollapsed && (
+
+      {/* Mobile: docked full-width bar just above the app's own bottom tab
+          bar, never draggable — free-floating drag is awkward on a small
+          touch screen and would fight with the tab bar underneath it. */}
+      {active && isMobile && (
+        panelCollapsed ? (
+          <button
+            onClick={() => setPanelCollapsed(false)}
+            title="Show drawing tools"
+            aria-label="Show drawing tools"
+            className="glass fixed right-3 z-30 flex h-11 w-11 items-center justify-center rounded-full shadow-lg transition hover:bg-black/5 dark:hover:bg-white/10"
+            style={{ bottom: "calc(3.5rem + env(safe-area-inset-bottom) + 8px)" }}
+          >
+            <Pencil size={16} />
+          </button>
+        ) : (
+          <div
+            className="glass fixed inset-x-0 z-30 flex items-center gap-1 overflow-x-auto border-t px-2 py-2 shadow-lg"
+            style={{ bottom: "calc(3.5rem + env(safe-area-inset-bottom))" }}
+          >
+            <button
+              onClick={() => setPanelCollapsed(true)}
+              title="Collapse — keeps the pen tool active"
+              aria-label="Collapse drawing tools"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10"
+            >
+              <ChevronsLeft size={15} />
+            </button>
+            {toolButtons}
+            {!isEraser && (
+              <>
+                <div className="mx-1 h-8 w-px shrink-0 bg-black/10 dark:bg-white/10" />
+                {penTypeButtons}
+                {thicknessButtons}
+                {colorInput}
+              </>
+            )}
+          </div>
+        )
+      )}
+
+      {/* Desktop/tablet: freely draggable floating panel, position persisted
+          per-user in localStorage. */}
+      {active && !isMobile && panelCollapsed && (
         <button
           onClick={() => setPanelCollapsed(false)}
           title="Show drawing tools"
           aria-label="Show drawing tools"
-          className="glass absolute left-2 top-2 z-10 flex h-11 w-11 items-center justify-center rounded-xl shadow-lg transition hover:bg-black/5 dark:hover:bg-white/10"
+          className="glass fixed z-30 flex h-11 w-11 items-center justify-center rounded-xl shadow-lg transition hover:bg-black/5 dark:hover:bg-white/10"
+          style={{ left: toolbarPosition.x, top: toolbarPosition.y }}
         >
           <Pencil size={16} />
         </button>
       )}
-      {active && !panelCollapsed && (
-        <div className="glass absolute left-2 top-2 z-10 flex flex-col gap-1.5 rounded-xl p-1.5 shadow-lg">
+      {active && !isMobile && !panelCollapsed && (
+        <div
+          ref={panelRef}
+          className="glass fixed z-30 flex flex-col gap-1.5 rounded-xl p-1.5 shadow-lg"
+          style={{ left: toolbarPosition.x, top: toolbarPosition.y }}
+        >
+          <div
+            onPointerDown={onHandlePointerDown}
+            onPointerMove={onHandlePointerMove}
+            onPointerUp={onHandlePointerUp}
+            onPointerCancel={onHandlePointerUp}
+            title="Drag to move"
+            className="flex h-5 cursor-grab items-center justify-center rounded-md hover:bg-black/5 active:cursor-grabbing dark:hover:bg-white/10"
+            style={{ touchAction: "none" }}
+          >
+            <GripHorizontal size={14} className="opacity-50" />
+          </div>
           <div className="flex gap-1">
             <button
               onClick={() => setPanelCollapsed(true)}
@@ -441,70 +680,15 @@ export function DrawingCanvas({
             >
               <ChevronsLeft size={15} />
             </button>
-            {TOOLS.map((t) => {
-              const Icon = t.icon;
-              return (
-                <button
-                  key={t.value}
-                  onClick={() => setTool(t.value)}
-                  title={t.label}
-                  className={`flex h-11 w-11 items-center justify-center rounded-lg transition ${
-                    tool === t.value ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
-                  }`}
-                >
-                  <Icon size={15} />
-                </button>
-              );
-            })}
-            <button
-              onClick={() => setTool("ERASER")}
-              title="Eraser"
-              className={`flex h-11 w-11 items-center justify-center rounded-lg transition ${
-                isEraser ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
-              }`}
-            >
-              <Eraser size={15} />
-            </button>
+            {toolButtons}
           </div>
 
           {!isEraser && (
             <>
               <div className="mx-0.5 h-px bg-black/10 dark:bg-white/10" />
-              <div className="flex gap-1">
-                {PEN_TYPES.map((p) => (
-                  <button
-                    key={p.value}
-                    onClick={() => setPenType(p.value)}
-                    title={p.label}
-                    className={`flex-1 rounded-lg px-1.5 py-1 text-[10px] transition ${
-                      penType === p.value ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-1">
-                {THICKNESS_PRESETS.map((t) => (
-                  <button
-                    key={t.value}
-                    onClick={() => setStrokeWidth(t.value)}
-                    title={t.label}
-                    className={`flex-1 rounded-lg px-1.5 py-1 text-[10px] transition ${
-                      strokeWidth === t.value ? "bg-accent text-accent-foreground" : "hover:bg-black/5 dark:hover:bg-white/10"
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-              <input
-                type="color"
-                value={color}
-                onChange={(e) => setUserColor(e.target.value)}
-                title="Color"
-                className="h-7 w-full cursor-pointer rounded-lg border border-black/10 bg-transparent dark:border-white/10"
-              />
+              <div className="flex gap-1">{penTypeButtons}</div>
+              <div className="flex gap-1">{thicknessButtons}</div>
+              <div className="flex justify-center">{colorInput}</div>
             </>
           )}
         </div>
