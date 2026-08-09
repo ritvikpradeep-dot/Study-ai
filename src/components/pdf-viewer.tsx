@@ -554,20 +554,9 @@ export function PdfViewer({
                     customTextRenderer={customTextRenderer}
                     renderAnnotationLayer
                     renderTextLayer
-                    onRenderSuccess={(page) => {
-                      // TEMP DIAGNOSTIC — remove after confirming the canvas
-                      // annotation layer mounts. react-pdf swallows render
-                      // errors via a no-op warning() call in production
-                      // builds, so this is the only way to see what's
-                      // actually happening here on the deployed site.
-                      // eslint-disable-next-line no-console
-                      console.error("[diag] onRenderSuccess fired", { width: page?.width, height: page?.height });
-                      setPageDimensions({ width: page.width, height: page.height });
-                    }}
-                    onRenderError={(err) => {
-                      // eslint-disable-next-line no-console
-                      console.error("[diag] onRenderError", err);
-                    }}
+                    onRenderSuccess={(page) =>
+                      setPageDimensions({ width: page.width, height: page.height })
+                    }
                   />
                   {pageDimensions.width > 0 && (
                     <>
