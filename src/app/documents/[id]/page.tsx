@@ -1,3 +1,7 @@
+// Must be the first import — see the comment in dom-polyfills.ts. It patches
+// DOMMatrix/ImageData/Path2D before the DocumentWorkspace import below pulls
+// in react-pdf/pdfjs-dist, which crashes during SSR without them.
+import "@/lib/dom-polyfills";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";

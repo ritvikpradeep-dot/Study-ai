@@ -17,3 +17,12 @@ export function ensureDomStubs() {
     g.Path2D = class Path2D {};
   }
 }
+
+// Also run as an import side effect. instrumentation.ts's register() hook is
+// the documented place for this, but it's async (dynamic import) and doesn't
+// reliably win the race against Turbopack eagerly evaluating pdfjs-dist as
+// part of a server component's static import graph (e.g. a page importing a
+// "use client" component that pulls in react-pdf). A side-effect import,
+// placed first in the importing file, runs synchronously before any later
+// sibling import per the ES module spec — a stronger guarantee here.
+ensureDomStubs();
