@@ -117,6 +117,9 @@ model Document {
   drawings    Drawing[]
   stickyNotes StickyNote[]
   pageDwells  PageDwell[]
+
+  @@index([userId])
+  @@index([teamId])
 }
 
 // One note per (document, user) — in a team-shared document, each member
@@ -168,6 +171,8 @@ model Highlight {
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   author   User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
 }
 
 enum DrawingTool {
@@ -205,6 +210,8 @@ model Drawing {
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   author   User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
 }
 
 // Draggable annotation anchored to a point on a page — same solo/room
@@ -224,6 +231,8 @@ model StickyNote {
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   author   User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
 }
 
 enum ReactionTargetType {
@@ -275,6 +284,8 @@ model ActivityLogEntry {
 
   team  Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
   actor User @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
 }
 
 enum PomodoroPhase {
@@ -360,6 +371,8 @@ model RoomMessage {
 
   team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
   author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
 }
 
 model TeamMember {
@@ -409,6 +422,8 @@ model ChatMessage {
   createdAt  DateTime @default(now())
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
 }
 
 enum QuizSource {
