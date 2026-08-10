@@ -181,7 +181,10 @@ export function DrawingCanvas({
   const panelRef = useRef<HTMLDivElement>(null);
   const [toolbarPosition, setToolbarPosition] = useState(DEFAULT_TOOLBAR_POSITION);
   const dragState = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
-  const positionStorageKey = session?.user?.id ? `nous:drawToolbarPos:${session.user.id}` : null;
+  // v2: bumped after fixing DEFAULT_TOOLBAR_POSITION, which previously landed
+  // inside the app sidebar — v1 keys hold that now-wrong position and would
+  // otherwise keep overriding the corrected default forever.
+  const positionStorageKey = session?.user?.id ? `nous:drawToolbarPos:v2:${session.user.id}` : null;
   const collapsedStorageKey = session?.user?.id ? `nous:drawToolbarCollapsed:${session.user.id}` : null;
 
   const clampToolbarPosition = useCallback((pos: { x: number; y: number }) => {
